@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, TrendingUp, Clock, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { mockIssues, mockCategories, getStats, mockSocialPosts } from '../../data/mock';
+import { mockCategories, mockSocialPosts } from '../../data/mock';
 import MapComponent from '../../components/MapComponent';
 import IssueCard from '../../components/IssueCard';
+import apiService from '../../services/api';
 import {
   Select,
   SelectContent,
@@ -15,37 +16,77 @@ import {
 const OfficerDashboard = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('currentUser')));
-  const stats = getStats(); // In a real app, pass user.department to get specific stats
+  const [issues, setIssues] = useState([]);
+  const [stats, setStats] = useState({});
+  const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');
-  const [filterCategory, setFilterCategory] = useState('all'); // Could default to user's dept category map
+  const [filterCategory, setFilterCategory] = useState('all');
   const [filterVerification, setFilterVerification] = useState('all');
 
-  // Verify login
-  React.useEffect(() => {
+  // Verify login and load data
+  useEffect(() => {
     const storedUser = JSON.parse(localStorage.getItem('currentUser'));
     if (!storedUser) {
       navigate('/officer/login');
     } else {
       setUser(storedUser);
+      loadData();
     }
   }, [navigate]);
 
-  const filteredIssues = mockIssues.filter(issue => {
-    // Filter by Department First
-    if (user && issue.department !== user.department) return false;
-
-    const statusMatch = filterStatus === 'all' || issue.status === filterStatus;
-    const categoryMatch = filterCategory === 'all' || issue.category === filterCategory;
-    let verificationMatch = true;
-    if (filterVerification === 'verified') {
-      verificationMatch = issue.verifications.yes >= 3;
-    } else if (filterVerification === 'unverified') {
-      verificationMatch = issue.verifications.yes < 3;
+  // Load issues and stats from API
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [issuesResponse, statsResponse] = await Promise.all([
+        apiService.getIssues({ 
+          status: filterStatus, 
+          category: filterCategory, 
+          verification: filterVerification 
+        }),
+        apiService.getStats()
+      ]);
+      
+      setIssues(issuesResponse || []);
+      setStats(statsResponse || {});
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+      // Fallback to empty data
+      setIssues([]);
+      setStats({});
+    } finally {
+      setLoading(false);
     }
-    return statusMatch && categoryMatch && verificationMatch;
+  };
+
+  // Reload data when filters change
+  useEffect(() => {
+    if (user) {
+      loadData();
+    }
+  }, [filterStatus, filterCategory, filterVerification]);
+
+  // Filter issues by department (API already handles other filters)
+  const filteredIssues = issues.filter(issue => {
+    // Filter by Department if user has one
+    if (user && user.department && issue.department !== user.department) {
+      return false;
+    }
+    return true;
   });
 
   if (!user) return null;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Prepare map markers
   const mapMarkers = filteredIssues.map(issue => ({
@@ -58,28 +99,25 @@ const OfficerDashboard = () => {
   const statCards = [
     { 
       title: 'New Today', 
-      value: filteredIssues.filter(i => {
-           const today = new Date();
-           return i.reportedAt.toDateString() === today.toDateString();
-      }).length, 
+      value: stats.new_today || 0, 
       icon: <TrendingUp className="w-6 h-6" />,
       color: 'var(--primary)'
     },
     { 
       title: 'In Verification', 
-      value: filteredIssues.filter(i => i.status === 'verifying').length, 
+      value: stats.verifying || 0, 
       icon: <Clock className="w-6 h-6" />,
       color: 'var(--warning)'
     },
     { 
       title: 'In Progress', 
-      value: filteredIssues.filter(i => i.status === 'in_progress').length, 
+      value: stats.in_progress || 0, 
       icon: <AlertTriangle className="w-6 h-6" />,
       color: 'var(--accent)'
     },
     { 
       title: 'Resolved This Week', 
-      value: filteredIssues.filter(i => i.status === 'resolved').length, 
+      value: stats.resolved_this_week || 0, 
       icon: <CheckCircle2 className="w-6 h-6" />,
       color: 'var(--success)'
     },

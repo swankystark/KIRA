@@ -1,14 +1,35 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, MapPin, Calendar, Users } from 'lucide-react';
 import StatusTimeline from '../../components/StatusTimeline';
 import MapComponent from '../../components/MapComponent';
-import { mockIssues } from '../../data/mock';
+import apiService from '../../services/api';
 
 const IssueDetailPage = () => {
   const { issueId } = useParams();
   const navigate = useNavigate();
-  const issue = mockIssues.find(i => i.id === issueId) || mockIssues[0];
+  const [issue, setIssue] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const loadIssue = async () => {
+      try {
+        setLoading(true);
+        const issueData = await apiService.getIssue(issueId);
+        setIssue(issueData);
+      } catch (err) {
+        console.error('Failed to load issue:', err);
+        setError('Failed to load issue details');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (issueId) {
+      loadIssue();
+    }
+  }, [issueId]);
 
   const getStatusBadge = (status) => {
     const statusMap = {
@@ -31,6 +52,33 @@ const IssueDetailPage = () => {
     };
     return <span className={`badge ${severityMap[severity]}`}>{severity}</span>;
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading issue details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !issue) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">{error || 'Issue not found'}</p>
+          <button 
+            onClick={() => navigate('/my-issues')}
+            className="btn-primary"
+          >
+            Back to Issues
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ backgroundColor: 'var(--bg-surface)', minHeight: '100vh' }}>

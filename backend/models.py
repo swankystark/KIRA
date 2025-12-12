@@ -103,3 +103,38 @@ class Stats(BaseModel):
     in_progress: int = 0
     resolved_this_week: int = 0
     unverified: int = 0
+
+class ExtractedData(BaseModel):
+    description: Optional[str] = None
+    category: Optional[str] = None
+    location: Optional[str] = None
+    severity: Optional[str] = None
+
+class ChatRequest(BaseModel):
+    message: str
+    conversationId: Optional[str] = None
+    history: Optional[List[dict]] = None
+
+class ChatResponse(BaseModel):
+    success: bool
+    conversationId: str
+    response: str
+    needsMoreInfo: bool
+    extractedData: Optional[ExtractedData] = None
+    nextQuestion: Optional[str] = None
+    canSubmit: bool = False
+
+class AnalyzeRequest(BaseModel):
+    description: str
+
+class AnalysisData(BaseModel):
+    category: str
+    severity: str
+    department: str
+    location: str
+    summary: str
+
+class AnalyzeResponse(BaseModel):
+    success: bool
+    data: AnalysisData
+

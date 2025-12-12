@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Filter } from 'lucide-react';
 import IssueCard from '../../components/IssueCard';
-import { mockIssues, mockCategories, mockUser } from '../../data/mock';
+import { mockCategories } from '../../data/mock';
+import apiService from '../../services/api';
 import {
   Select,
   SelectContent,
@@ -13,17 +14,42 @@ import {
 
 const MyIssuesPage = () => {
   const navigate = useNavigate();
+  const [issues, setIssues] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
 
-  // Mock - in real app, would filter by current user
-  const userIssues = mockIssues;
+  // Mock user data for now - in real app would come from auth context
+  const mockUser = {
+    name: 'Citizen User',
+    level: 'Community Helper',
+    points: 150,
+    stats: { resolved: 3 },
+    badges: [
+      { id: 1, icon: '🏆', name: 'First Report', description: 'Reported first issue' },
+      { id: 2, icon: '👥', name: 'Verifier', description: 'Verified 5 issues' }
+    ]
+  };
 
-  const filteredIssues = userIssues.filter(issue => {
-    const statusMatch = filterStatus === 'all' || issue.status === filterStatus;
-    const categoryMatch = filterCategory === 'all' || issue.category === filterCategory;
-    return statusMatch && categoryMatch;
-  });
+  useEffect(() => {
+    loadIssues();
+  }, [filterStatus, filterCategory]);
+
+  const loadIssues = async () => {
+    try {
+      setLoading(true);
+      const issuesData = await apiService.getIssues({
+        status: filterStatus,
+        category: filterCategory
+      });
+      setIssues(issuesData || []);
+    } catch (error) {
+      console.error('Failed to load issues:', error);
+      setIssues([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div style={{ backgroundColor: 'var(--bg-surface)', minHeight: '100vh' }}>
@@ -132,13 +158,18 @@ const MyIssuesPage = () => {
         {/* Issues List */}
         <div className="mb-4">
           <h2 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
-            {filteredIssues.length} Issue{filteredIssues.length !== 1 ? 's' : ''} Found
+            {issues.length} Issue{issues.length !== 1 ? 's' : ''} Found
           </h2>
         </div>
 
-        {filteredIssues.length > 0 ? (
+        {loading ? (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading issues...</p>
+          </div>
+        ) : issues.length > 0 ? (
           <div className="grid md:grid-cols-2 gap-6">
-            {filteredIssues.map(issue => (
+            {issues.map(issue => (
               <IssueCard 
                 key={issue.id} 
                 issue={issue}

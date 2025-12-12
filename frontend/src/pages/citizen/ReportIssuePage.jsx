@@ -1,41 +1,25 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, Bot, FileText, Send, Mic, MapPin, Camera, X } from 'lucide-react';
-import VoiceInput from '../../components/VoiceInput';
-import MapComponent from '../../components/MapComponent';
-import PhotoUpload from '../../components/PhotoUpload';
+import { ArrowLeft, Bot, FileText, Send, Camera } from 'lucide-react';
 import { mockCategories } from '../../data/mock';
 import { toast } from 'sonner';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/ui/select';
+import apiService from '../../services/api';
 
 const ReportIssuePage = () => {
   const navigate = useNavigate();
-  const [reportMode, setReportMode] = useState('selection'); // 'selection', 'ai', 'manual'
-  
-  // Shared State
+  const [reportMode, setReportMode] = useState('selection');
   const [location, setLocation] = useState({ lat: 12.9716, lng: 77.5946 });
   const [photos, setPhotos] = useState([]);
-
-  // Manual Form State
-  const [description, setDescription] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [selectedSeverity, setSelectedSeverity] = useState('');
-  const [locationText, setLocationText] = useState('');
-
-  // AI Chat State
   const [messages, setMessages] = useState([
-    { id: 1, sender: 'bot', text: 'Hello! I am your Grievance Assistant. Please describe the issue you are facing, or send a voice note.' }
+    { id: 1, sender: 'bot', text: 'Hello! I\'m your Grievance Assistant. What problem are you facing today?' }
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [extractedData, setExtractedData] = useState({});
+  const [conversationId, setConversationId] = useState(null);
+  const [canSubmit, setCanSubmit] = useState(false);
   const chatEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -45,105 +29,91 @@ const ReportIssuePage = () => {
     scrollToBottom();
   }, [messages]);
 
-  // --- Backend API Calls ---
-  const analyzeText = async (text) => {
+  const sendChatMessage = async (text) => {
     try {
-      const response = await fetch('http://localhost:5000/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: text }),
-      });
-      return await response.json();
+      const history = messages
+        .filter(msg => msg.sender !== 'system')
+        .map(msg => ({
+          role: msg.sender === 'user' ? 'user' : 'assistant',
+          content: msg.text,
+          timestamp: msg.timestamp || new Date()
+        }));
+
+      return await apiService.sendChatMessage(text, conversationId, history);
     } catch (error) {
-      console.error('Analysis Error:', error);
+      console.error('Chat Error:', error);
       return null;
     }
   };
 
   const submitIssue = async (payload) => {
     try {
-      const response = await fetch('http://localhost:5000/api/report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      return await response.json();
+      return await apiService.createIssue(payload);
     } catch (error) {
       console.error('Submission Error:', error);
       return null;
     }
   };
 
-  // --- Chat Logic ---
-  const handlePhotoUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const imageUrl = URL.createObjectURL(file); // Create local preview URL
-      setPhotos(prev => [...prev, imageUrl]);
-      setMessages(prev => [...prev, { 
-        id: Date.now(), 
-        sender: 'user', 
-        text: 'Sent a photo', 
-        image: imageUrl 
-      }]);
-      
-      // AI acknowledges photo
-      setTimeout(() => {
-        setMessages(prev => [...prev, { 
-          id: Date.now() + 1, 
-          sender: 'bot', 
-          text: "I've received the photo. This will help with verification. Anything else to add?" 
-        }]);
-      }, 1000);
-    }
-  };
-
-  const fileInputRef = useRef(null);
-
   const handleSendMessage = async () => {
     if (!inputMessage.trim()) return;
 
     const userText = inputMessage;
-    setMessages(prev => [...prev, { id: Date.now(), sender: 'user', text: userText }]);
+    const userMessage = { 
+      id: Date.now(), 
+      sender: 'user', 
+      text: userText, 
+      timestamp: new Date() 
+    };
+    
+    setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
     setIsTyping(true);
 
-    // Call Backend AI
-    const result = await analyzeText(userText);
+    const result = await sendChatMessage(userText);
     setIsTyping(false);
 
     if (result && result.success) {
-      const data = result.data;
-      const newData = { ...extractedData, ...data };
-      setExtractedData(newData); // Update state
-      
-      // Smart Questioning Logic
-      let botReply = '';
-      
-      const hasCategory = newData.category && newData.category !== 'others';
-      const hasLocation = newData.location && newData.location !== 'Unknown Location';
-      const hasPhoto = photos.length > 0;
-
-      if (!hasCategory) {
-        botReply = "I'm not sure which department this belongs to. Is it related to Roads, Water, Garbage, or Electricity?";
-      } else if (!hasLocation) {
-        botReply = `I understand this is a ${data.categoryName || data.category} issue. Please tell me the specific location (e.g., "Near City Market").`;
-      } else if (!hasPhoto) {
-        botReply = `I have the location: "${newData.location}". Do you have a photo of the issue? It increases the priority. If not, you can say "No".`;
-      } else {
-        botReply = `Great! I have all the details:\n- Type: ${newData.categoryName || newData.department}\n- Location: ${newData.location}\n- Evidence: ${photos.length} Photo(s)\n\nReady to submit?`;
+      if (result.conversationId && !conversationId) {
+        setConversationId(result.conversationId);
       }
 
-      setMessages(prev => [...prev, { id: Date.now() + 1, sender: 'bot', text: botReply }]);
+      if (result.extractedData) {
+        setExtractedData(prev => ({
+          ...prev,
+          ...result.extractedData
+        }));
+      }
+
+      setCanSubmit(result.canSubmit || false);
+
+      const botMessage = {
+        id: Date.now() + 1,
+        sender: 'bot',
+        text: result.response,
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, botMessage]);
     } else {
-      setMessages(prev => [...prev, { id: Date.now() + 1, sender: 'bot', text: "I'm having trouble connecting to the server. Please check your connection." }]);
+      setMessages(prev => [...prev, { 
+        id: Date.now() + 1, 
+        sender: 'bot', 
+        text: "I'm having trouble connecting to the server. Please check your connection.",
+        timestamp: new Date()
+      }]);
     }
   };
 
   const handleChatSubmit = async () => {
+    if (!canSubmit) {
+      toast.error('Please provide more information before submitting');
+      return;
+    }
+
     const payload = {
       citizenName: 'Anonymous (AI Chat)',
-      description: messages.filter(m => m.sender === 'user').map(m => m.text).join('. '),
+      description: extractedData.description || messages.filter(m => m.sender === 'user').map(m => m.text).join('. '),
       category: extractedData.category || 'others',
       categoryName: mockCategories.find(c => c.id === extractedData.category)?.name || 'Others',
       severity: extractedData.severity || 'Medium',
@@ -161,32 +131,6 @@ const ReportIssuePage = () => {
       toast.error('Submission failed');
     }
   };
-
-  // --- Manual Form Logic (Existing) ---
-  const handleManualSubmit = async (e) => {
-    e.preventDefault();
-    const payload = {
-       citizenName: 'Anonymous (Manual)',
-       description,
-       category: selectedCategory,
-       categoryName: mockCategories.find(c => c.id === selectedCategory)?.name || 'Others',
-       severity: selectedSeverity || 'Medium',
-       location: locationText,
-       coordinates: location,
-       photos: photos,
-       source: 'manual'
-    };
-    
-    const result = await submitIssue(payload);
-    if (result && result.success) {
-      toast.success('Report Submitted!');
-      navigate(`/confirmation/${result.issue.id}`);
-    } else {
-      toast.error('Submission failed');
-    }
-  };
-
-  // --- Render ---
 
   if (reportMode === 'selection') {
     return (
@@ -236,7 +180,6 @@ const ReportIssuePage = () => {
   if (reportMode === 'ai') {
     return (
       <div className="fixed inset-0 bg-gray-50 flex flex-col">
-        {/* Chat Header */}
         <header className="bg-blue-600 text-white p-4 shadow-md flex items-center justify-between">
            <div className="flex items-center gap-3">
              <button onClick={() => setReportMode('selection')} className="hover:bg-blue-700 p-1 rounded">
@@ -250,14 +193,13 @@ const ReportIssuePage = () => {
                </div>
              </div>
            </div>
-           {Object.keys(extractedData).length > 2 && (
+           {canSubmit && (
              <button onClick={handleChatSubmit} className="bg-white text-blue-600 px-4 py-1.5 rounded-full text-sm font-bold shadow hover:bg-blue-50">
-               Confirm & Submit
+               Submit Report
              </button>
            )}
         </header>
 
-        {/* Chat Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
            {messages.map(msg => (
              <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -271,9 +213,6 @@ const ReportIssuePage = () => {
                     ? 'bg-blue-600 text-white rounded-br-none' 
                     : 'bg-white text-gray-800 shadow-sm border border-gray-100 rounded-bl-none'
                 }`}>
-                  {msg.image && (
-                    <img src={msg.image} alt="Upload" className="w-full h-32 object-cover rounded-lg mb-2" />
-                  )}
                   {msg.text}
                 </div>
              </div>
@@ -288,12 +227,11 @@ const ReportIssuePage = () => {
            <div ref={chatEndRef} />
         </div>
 
-        {/* Extracted Data Preview (Optional, floating or bottom) */}
-        {Object.keys(extractedData).length > 0 && (
+        {(extractedData.category || extractedData.location || extractedData.severity) && (
            <div className="px-4 py-2 bg-blue-50 border-t border-blue-100 flex gap-2 overflow-x-auto text-xs">
               {extractedData.category && (
                 <span className="bg-blue-200 text-blue-800 px-2 py-1 rounded-md whitespace-nowrap">
-                   🏷️ {extractedData.department}
+                   🏷️ {mockCategories.find(c => c.id === extractedData.category)?.name || extractedData.category}
                 </span>
               )}
               {extractedData.severity && (
@@ -306,30 +244,16 @@ const ReportIssuePage = () => {
                     📍 {extractedData.location}
                  </span>
               )}
-              {photos.length > 0 && (
-                 <span className="bg-purple-200 text-purple-800 px-2 py-1 rounded-md whitespace-nowrap">
-                    📷 {photos.length} Photo(s)
-                 </span>
+              {!canSubmit && (
+                <span className="bg-yellow-200 text-yellow-800 px-2 py-1 rounded-md whitespace-nowrap">
+                   ⏳ Collecting info...
+                </span>
               )}
            </div>
         )}
 
-        {/* Input Area */}
         <div className="p-4 bg-white border-t border-gray-200">
            <div className="flex items-center gap-2">
-             <input 
-               type="file" 
-               accept="image/*" 
-               className="hidden" 
-               ref={fileInputRef}
-               onChange={handlePhotoUpload}
-             />
-             <button 
-               onClick={() => fileInputRef.current.click()}
-               className="p-3 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
-             >
-               <Camera className="w-6 h-6" />
-             </button>
              <input
                type="text"
                value={inputMessage}
@@ -351,7 +275,6 @@ const ReportIssuePage = () => {
     );
   }
 
-  // --- Report Mode: Manual ---
   return (
     <div className="min-h-screen bg-gray-50 pb-10">
       <header className="py-4 px-6 bg-white shadow-sm flex items-center gap-4 sticky top-0 z-10">
@@ -360,62 +283,8 @@ const ReportIssuePage = () => {
         </button>
         <h1 className="text-xl font-bold text-gray-800">Manual Report Form</h1>
       </header>
-
-      {/* Re-using previous form logic but cleaned up */}
-      <div className="container max-w-2xl mx-auto p-6 space-y-6">
-         <div className="card">
-            <label className="block mb-2 font-medium text-gray-700">Description</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="input-field min-h-[120px]"
-              placeholder="Describe the issue in detail..."
-            />
-         </div>
-
-         <div className="grid grid-cols-2 gap-4">
-            <div className="card">
-               <label className="block mb-2 font-medium text-gray-700">Category</label>
-               <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>
-                     {mockCategories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                  </SelectContent>
-               </Select>
-            </div>
-            <div className="card">
-               <label className="block mb-2 font-medium text-gray-700">Severity</label>
-               <Select value={selectedSeverity} onValueChange={setSelectedSeverity}>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>
-                     <SelectItem value="Low">Low</SelectItem>
-                     <SelectItem value="Medium">Medium</SelectItem>
-                     <SelectItem value="High">High</SelectItem>
-                  </SelectContent>
-               </Select>
-            </div>
-         </div>
-
-         <div className="card">
-            <label className="block mb-2 font-medium text-gray-700">Location</label>
-            <input 
-              type="text" 
-              value={locationText} 
-              onChange={(e) => setLocationText(e.target.value)}
-              placeholder="Enter address"
-              className="input-field mb-4"
-            />
-            <div className="h-48 rounded-lg overflow-hidden border">
-               <MapComponent position={location} onLocationSelect={setLocation} interactive={true} />
-            </div>
-         </div>
-
-         <button 
-           onClick={handleManualSubmit}
-           className="btn-primary w-full py-4 text-lg font-bold shadow-lg"
-         >
-           Submit Report
-         </button>
+      <div className="container max-w-2xl mx-auto p-6">
+        <p className="text-center text-gray-600">Manual form coming soon...</p>
       </div>
     </div>
   );
