@@ -10,8 +10,9 @@ from typing import Dict, List
 logger = logging.getLogger(__name__)
 
 # Flag severity levels
-CRITICAL_FLAGS = ["AI_GENERATED", "RESUBMITTED_IMAGE", "NO_EXIF_DATA", "IMAGE_CONTENT_MISMATCH"]
-WARNING_FLAGS = ["LOCATION_NOT_AVAILABLE", "LOCATION_MISMATCH", "IMAGE_ISSUE_MISMATCH", "LOW_VISION_CONFIDENCE"]
+CRITICAL_FLAGS = ["AI_GENERATED", "SUSPECTED_AI_GENERATED", "RESUBMITTED_IMAGE", "NO_EXIF_DATA", "IMAGE_CONTENT_MISMATCH"]
+WARNING_FLAGS = ["LOCATION_NOT_AVAILABLE", "LOCATION_MISMATCH", "IMAGE_ISSUE_MISMATCH", "LOW_VISION_CONFIDENCE", "FORENSICS_REVIEW_REQUIRED"]
+INFO_FLAGS = ["WHATSAPP_FORWARDED_IMAGE", "SCREENSHOT_DETECTED", "ORIGINAL_PHOTO_VERIFIED"]  # NEW: Informational flags
 
 
 def make_decision(validation_results: Dict) -> Dict:
@@ -24,7 +25,8 @@ def make_decision(validation_results: Dict) -> Dict:
             - exif_data: dict from exif_service  
             - hash_match: dict from hash_service
             - issue_match: dict from issue classification (optional)
-            - vision_analysis: dict from vision_service (NEW)
+            - vision_analysis: dict from vision_service
+            - forensics_analysis: dict from forensics_service (NEW)
             
     Returns:
         dict: Final decision with structure:
@@ -35,6 +37,7 @@ def make_decision(validation_results: Dict) -> Dict:
                 "exif_status": {...},
                 "hash_match": {...},
                 "vision_analysis": {...},
+                "forensics_analysis": {...},
                 "confidence_score": float
             }
     """
@@ -47,14 +50,35 @@ def make_decision(validation_results: Dict) -> Dict:
     hash_match = validation_results.get("hash_match", {})
     issue_match = validation_results.get("issue_match", {})
     vision_analysis = validation_results.get("vision_analysis", {})
+    forensics_analysis = validation_results.get("forensics_analysis", {})
     
     # Check AI-generated flag (CRITICAL)
+    ai_probability = ai_detection.get("ai_probability", 0.0)
     if ai_detection.get("is_ai_generated", False):
         reason_codes.append("AI_GENERATED")
         status = "rejected"
         logger.warning(
-            f"Image rejected: AI-generated probability {ai_detection.get('ai_probability', 0):.2%}"
+            f"Image rejected: AI-generated probability {ai_probability:.2%}"
         )
+    
+    # ENHANCED: Secondary AI detection check using forensics evidence
+    elif ai_probability >= 0.3:  # Lower threshold for secondary check
+        # Look for suspicious patterns in forensics
+        forensics_suspicious = False
+        
+        if forensics_analysis and forensics_analysis.get("source_type") == "UNKNOWN":
+            forensics_confidence = forensics_analysis.get("confidence_score", 0.0)
+            if forensics_confidence < 0.3:  # Very low forensics confidence
+                forensics_suspicious = True
+        
+        # If AI probability is moderate (30-80%) AND forensics is suspicious
+        if forensics_suspicious and ai_probability >= 0.4:
+            reason_codes.append("SUSPECTED_AI_GENERATED")
+            status = "rejected"
+            logger.warning(
+                f"Image rejected: Suspected AI-generated (AI: {ai_probability:.2%}, "
+                f"Forensics: suspicious patterns)"
+            )
     
     # Check duplicate/resubmission (CRITICAL)
     if hash_match.get("is_duplicate", False):
@@ -128,6 +152,48 @@ def make_decision(validation_results: Dict) -> Dict:
                 f"(detected: {vision_analysis.get('issue_type_detected')})"
             )
     
+    # NEW: Check forensics analysis results
+    if forensics_analysis and forensics_analysis.get("source_type") != "UNKNOWN":
+        source_type = forensics_analysis.get("source_type")
+        forensics_confidence = forensics_analysis.get("confidence_score", 0.0)
+        
+        # Log forensics findings for transparency
+        logger.info(
+            f"Forensics v{forensics_analysis.get('forensics_version', '1.0')}: "
+            f"Detected {source_type} with {forensics_confidence:.2%} confidence"
+        )
+        
+        # Log evidence for debugging
+        evidence = forensics_analysis.get('evidence', [])
+        if evidence:
+            logger.debug(f"Forensics evidence: {', '.join(evidence[:3])}{'...' if len(evidence) > 3 else ''}")
+        
+        # Apply forensics-based logic (more nuanced than before)
+        if source_type == "WHATSAPP_IMAGE" and forensics_confidence >= 0.7:
+            # WhatsApp images are now ACCEPTED but flagged for review
+            reason_codes.append("WHATSAPP_FORWARDED_IMAGE")
+            logger.info("Info: WhatsApp forwarded image detected - accepted but flagged")
+            
+        elif source_type == "SCREENSHOT_IMAGE" and forensics_confidence >= 0.8:
+            # Screenshots are ACCEPTED but flagged (could be legitimate screenshots of issues)
+            reason_codes.append("SCREENSHOT_DETECTED")
+            logger.info("Info: Screenshot detected - accepted but flagged for review")
+            
+        elif source_type == "ORIGINAL_PHONE_PHOTO" and forensics_confidence >= 0.7:
+            # Original photos get a confidence boost - highest authenticity
+            reason_codes.append("ORIGINAL_PHOTO_VERIFIED")
+            logger.info("Info: Original phone photo verified - highest authenticity confidence")
+            
+        # Check for low confidence requiring review
+        classification_result = forensics_analysis.get('classification_result', {})
+        if classification_result.get('recommendation') == 'REVIEW':
+            reason_codes.append("FORENSICS_REVIEW_REQUIRED")
+            logger.info("Info: Forensics analysis requires manual review")
+            
+        # Only reject if forensics indicates potential fraud with very high confidence
+        # This is reserved for future sophisticated fraud detection
+        # For now, we accept all sources but flag them appropriately
+    
     # Calculate confidence score
     confidence_score = calculate_confidence_score(validation_results, reason_codes)
     
@@ -166,6 +232,16 @@ def make_decision(validation_results: Dict) -> Dict:
             "skipped": vision_analysis.get("skipped", False),
             "error": vision_analysis.get("error")
         } if vision_analysis and not vision_analysis.get("skipped", False) else None,
+        "forensics_analysis": {
+            "source_type": forensics_analysis.get("source_type", "UNKNOWN"),
+            "confidence_score": forensics_analysis.get("confidence_score", 0.0),
+            "evidence": forensics_analysis.get("evidence", []),
+            "byte_analysis": forensics_analysis.get("byte_analysis", {}),
+            "metadata_analysis": forensics_analysis.get("metadata_analysis", {}),
+            "compression_analysis": forensics_analysis.get("compression_analysis", {}),
+            "filename_analysis": forensics_analysis.get("filename_analysis", {}),
+            "forensics_version": forensics_analysis.get("forensics_version", "1.0")
+        } if forensics_analysis and forensics_analysis.get("source_type") != "UNKNOWN" else None,
         "confidence_score": confidence_score
     }
     
@@ -196,6 +272,7 @@ def calculate_confidence_score(validation_results: Dict, reason_codes: List[str]
     ai_detection = validation_results.get("ai_detection", {})
     exif_data = validation_results.get("exif_data", {})
     hash_match = validation_results.get("hash_match", {})
+    forensics_analysis = validation_results.get("forensics_analysis", {})
     
     # Deduct for critical flags
     if "AI_GENERATED" in reason_codes:
@@ -242,6 +319,30 @@ def calculate_confidence_score(validation_results: Dict, reason_codes: List[str]
     if "LOW_VISION_CONFIDENCE" in reason_codes:
         score -= 0.15  # 15% penalty for unclear images
     
+    # NEW: Forensics-based adjustments
+    if forensics_analysis and forensics_analysis.get("source_type") != "UNKNOWN":
+        source_type = forensics_analysis.get("source_type")
+        forensics_confidence = forensics_analysis.get("confidence_score", 0.0)
+        
+        if source_type == "ORIGINAL_PHONE_PHOTO" and forensics_confidence >= 0.7:
+            # Significant boost for verified original photos - highest authenticity
+            if "ORIGINAL_PHOTO_VERIFIED" in reason_codes:
+                score += 0.15 * forensics_confidence  # Up to 15% boost
+            
+        elif source_type == "WHATSAPP_IMAGE":
+            # Small penalty for WhatsApp (but still accepted)
+            if "WHATSAPP_FORWARDED_IMAGE" in reason_codes:
+                score -= 0.05  # 5% penalty - minor concern
+                
+        elif source_type == "SCREENSHOT_IMAGE":
+            # Small penalty for screenshots (but still accepted)
+            if "SCREENSHOT_DETECTED" in reason_codes:
+                score -= 0.08  # 8% penalty - slightly more concern than WhatsApp
+        
+        # Penalty for requiring manual review
+        if "FORENSICS_REVIEW_REQUIRED" in reason_codes:
+            score -= 0.12  # 12% penalty for low confidence classification
+    
     # Ensure score stays in valid range
     score = max(0.0, min(1.0, score))
     
@@ -278,13 +379,18 @@ def get_rejection_message(reason_codes: List[str]) -> str:
     """
     messages = {
         "AI_GENERATED": "This image appears to be AI-generated or synthetic. Please upload a genuine photograph of the issue.",
+        "SUSPECTED_AI_GENERATED": "This image shows patterns consistent with AI-generated content. Please upload a genuine photograph taken with your camera.",
         "RESUBMITTED_IMAGE": "This image has already been submitted for a resolved complaint. Please upload a new photo.",
         "NO_EXIF_DATA": "This image does not contain EXIF metadata. Please upload a photo taken directly from your camera with location services enabled. Note: WhatsApp and social media images are not accepted.",
         "LOCATION_MISMATCH": "The GPS location in the image does not match your reported location. This may indicate the photo was taken elsewhere.",
         "LOCATION_NOT_AVAILABLE": "No GPS data found in the image. For verification, please ensure location services are enabled when taking photos.",
         "IMAGE_ISSUE_MISMATCH": "The image content may not match the selected issue type. Please verify you've selected the correct category.",
         "IMAGE_CONTENT_MISMATCH": "Our AI analysis detected that the image content does not match the reported issue type. Please upload a relevant photo or select the correct category.",
-        "LOW_VISION_CONFIDENCE": "The image quality is too low or unclear for proper analysis. Please upload a clearer photo taken in good lighting."
+        "LOW_VISION_CONFIDENCE": "The image quality is too low or unclear for proper analysis. Please upload a clearer photo taken in good lighting.",
+        "WHATSAPP_FORWARDED_IMAGE": "This appears to be a WhatsApp forwarded image. While accepted, please note that original photos provide better verification.",
+        "SCREENSHOT_DETECTED": "This appears to be a screenshot. While accepted, please note that original photos of the issue provide better verification.",
+        "ORIGINAL_PHOTO_VERIFIED": "This appears to be an original phone photo with full metadata. Excellent authenticity verification.",
+        "FORENSICS_REVIEW_REQUIRED": "The image source could not be determined with high confidence. Manual review may be required."
     }
     
     # Get messages for all reason codes

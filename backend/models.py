@@ -164,6 +164,26 @@ class VisionAnalysis(BaseModel):
     skipped: bool = False
     error: Optional[str] = None
 
+# Image Forensics Models
+class ForensicsAnalysis(BaseModel):
+    source_type: str  # "ORIGINAL_PHONE_PHOTO" | "WHATSAPP_IMAGE" | "SCREENSHOT_IMAGE" | "UNKNOWN"
+    confidence_score: float  # 0.0 to 1.0
+    evidence: List[str]
+    byte_analysis: dict
+    metadata_analysis: dict
+    compression_analysis: dict
+    filename_analysis: dict
+    forensics_version: str = "1.0"
+
+class ForensicsUIFeedback(BaseModel):
+    show_feedback: bool
+    icon: str
+    message: str
+    confidence: int
+    recommendation: str
+    type: str  # "success" | "info" | "warning" | "neutral"
+    technical_details: Optional[str] = None
+
 class ImageValidationResult(BaseModel):
     status: str  # "accepted" | "rejected"
     reason_codes: List[str] = []
@@ -171,6 +191,8 @@ class ImageValidationResult(BaseModel):
     exif_status: EXIFData
     hash_match: HashMatch
     vision_analysis: Optional[VisionAnalysis] = None
+    forensics_analysis: Optional[ForensicsAnalysis] = None
+    forensics_ui_feedback: Optional[ForensicsUIFeedback] = None  # NEW: UI feedback
     confidence_score: float
     message: Optional[str] = None
 

@@ -70,6 +70,7 @@ const ReportIssuePage = () => {
                              `${result.full_exif.gps_coordinates.latitude.toFixed(4)}°N, ${result.full_exif.gps_coordinates.longitude.toFixed(4)}°E`
                 } : location || { lat: 12.9234, lng: 77.5678 }),
                 vision_analysis: result.vision_analysis,
+                forensics_analysis: result.forensics_analysis,
                 validation_status: result.status
             };
             
@@ -278,10 +279,12 @@ const ReportIssuePage = () => {
     // Extracted Issue Form Step (NEW)
     if (currentStep === 'extracted_form' && aiAnalysis) {
         console.log('🎯 Rendering ExtractedIssueForm with:', aiAnalysis);
+        console.log('🔍 Validation result for forensics:', validationResult);
         return (
             <ExtractedIssueForm
                 extractedData={aiAnalysis}
                 visionAnalysis={aiAnalysis.vision_analysis}
+                forensicsAnalysis={aiAnalysis.forensics_analysis}
                 onSubmit={handleSubmitFromExtracted}
                 onRetake={() => setCurrentStep('camera')}
                 onEdit={() => setCurrentStep('manual')}

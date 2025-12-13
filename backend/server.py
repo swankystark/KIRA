@@ -196,6 +196,82 @@ def _map_vision_to_user_category(vision_category: str) -> str:
     }
     return mapping.get(vision_category, "others")
 
+def _generate_forensics_ui_feedback(forensics_analysis: Dict) -> Dict:
+    """
+    Generate non-blocking UI feedback for forensics classification
+    
+    STEP 7: UI FEEDBACK (NON-BLOCKING)
+    Examples:
+    • "📷 Original photo detected (95% confidence)"
+    • "💬 WhatsApp image detected (89% confidence)" 
+    • "📱 Screenshot detected (92% confidence)"
+    If confidence < 70: "Image source unclear — may require review"
+    """
+    try:
+        classification = forensics_analysis.get('classification_result', {})
+        source = classification.get('source', 'UNKNOWN')
+        confidence = classification.get('confidence', 0)
+        recommendation = classification.get('recommendation', 'ACCEPT')
+        
+        # Generate user-friendly feedback
+        feedback = {
+            'show_feedback': True,
+            'icon': '🔍',
+            'message': 'Image source analysis completed',
+            'confidence': confidence,
+            'recommendation': recommendation,
+            'technical_details': None
+        }
+        
+        if source == 'ORIGINAL_PHOTO' and confidence >= 70:
+            feedback.update({
+                'icon': '📷',
+                'message': f'Original photo detected ({confidence}% confidence)',
+                'type': 'success',
+                'technical_details': 'High authenticity - contains full camera metadata'
+            })
+        elif source == 'WHATSAPP' and confidence >= 70:
+            feedback.update({
+                'icon': '💬', 
+                'message': f'WhatsApp image detected ({confidence}% confidence)',
+                'type': 'info',
+                'technical_details': 'Forwarded image - acceptable for reporting'
+            })
+        elif source == 'SCREENSHOT' and confidence >= 70:
+            feedback.update({
+                'icon': '📱',
+                'message': f'Screenshot detected ({confidence}% confidence)', 
+                'type': 'info',
+                'technical_details': 'Screenshot image - acceptable for reporting'
+            })
+        elif confidence < 70:
+            feedback.update({
+                'icon': '⚠️',
+                'message': 'Image source unclear — may require review',
+                'type': 'warning',
+                'technical_details': f'Low confidence classification ({confidence}%)'
+            })
+        else:
+            feedback.update({
+                'icon': '❓',
+                'message': 'Image source could not be determined',
+                'type': 'neutral',
+                'technical_details': 'Unable to classify image source'
+            })
+        
+        return feedback
+        
+    except Exception as e:
+        logger.debug(f"UI feedback generation failed: {e}")
+        return {
+            'show_feedback': False,
+            'icon': '🔍',
+            'message': 'Image analysis completed',
+            'confidence': 0,
+            'recommendation': 'ACCEPT',
+            'type': 'neutral'
+        }
+
 def _map_vision_severity(vision_severity: str) -> str:
     """Map vision severity to user severity format"""
     mapping = {
@@ -537,8 +613,68 @@ async def validate_image(
             "original_issue_id": similar_hashes[0]["issue_id"] if similar_hashes else None
         }
         
-        # STEP 5: Image Content Understanding & Issue Extraction (NEW - Gemini Vision)
-        logger.info("Step 5: Vision analysis - content understanding")
+        # STEP 5: Image Source Forensics (AFTER AI detection, BEFORE issue classification)
+        logger.info("Step 5: Image source forensics classification")
+        try:
+            from utils.imageForensics import ImageSourceForensics
+            
+            # Read image buffer for forensics
+            with open(temp_file_path, 'rb') as f:
+                image_buffer = f.read()
+            
+            # Run complete forensics classification
+            forensics = ImageSourceForensics()
+            classification_result = forensics.classify_image(image_buffer, str(temp_file_path), image.filename)
+            
+            # Create forensics analysis for backward compatibility
+            source_mapping = {
+                'WHATSAPP': 'WHATSAPP_IMAGE',
+                'SCREENSHOT': 'SCREENSHOT_IMAGE', 
+                'ORIGINAL_PHOTO': 'ORIGINAL_PHONE_PHOTO',
+                'UNKNOWN': 'UNKNOWN'
+            }
+            
+            forensics_analysis = {
+                'source_type': source_mapping.get(classification_result['source'], 'UNKNOWN'),
+                'confidence_score': classification_result['confidence'] / 100.0,
+                'evidence': [],
+                'classification_result': classification_result,
+                'forensics_version': '3.0'
+            }
+            
+            # Extract evidence from best match
+            if classification_result['source'] != 'UNKNOWN':
+                breakdown = classification_result['breakdown']
+                best_source = classification_result['source'].lower()
+                if best_source in breakdown:
+                    forensics_analysis['evidence'] = breakdown[best_source].get('evidence', [])
+            
+            logger.info(f"Forensics: {classification_result['source']} "
+                       f"({classification_result['confidence']}% confidence, "
+                       f"{classification_result['recommendation']})")
+            
+            # SAFETY: Never reject based solely on image source
+            # This is for confidence scoring, audit trail, and user feedback only
+            
+        except Exception as e:
+            logger.warning(f"Forensics analysis failed gracefully: {str(e)}")
+            # Graceful fallback - never block submission due to forensics failure
+            forensics_analysis = {
+                'source_type': 'UNKNOWN',
+                'confidence_score': 0.0,
+                'evidence': [f'Analysis failed: {str(e)}'],
+                'classification_result': {
+                    'source': 'UNKNOWN',
+                    'confidence': 0,
+                    'recommendation': 'ACCEPT',  # Default to accept on failure
+                    'breakdown': {},
+                    'error': str(e)
+                },
+                'forensics_version': '3.0'
+            }
+
+        # STEP 6: Image Content Understanding & Issue Extraction (Gemini Vision)
+        logger.info("Step 6: Vision analysis - content understanding")
         vision_analysis = vision_service.analyze_image_content(
             image_path=str(temp_file_path),
             user_issue_type=issue_type,
@@ -555,14 +691,15 @@ async def validate_image(
             "detected_type": vision_analysis.get("issue_type_detected") if not vision_analysis.get("skipped") else None
         }
         
-        # STEP 6: Decision Engine
-        logger.info("Step 6: Running decision engine")
+        # STEP 7: Decision Engine
+        logger.info("Step 7: Running decision engine")
         validation_results = {
             "ai_detection": ai_detection,
             "exif_data": exif_data,
             "hash_match": hash_match_data,
             "issue_match": issue_match,
-            "vision_analysis": vision_analysis  # NEW
+            "vision_analysis": vision_analysis,
+            "forensics_analysis": forensics_analysis  # NEW
         }
         
         decision = decision_engine.make_decision(validation_results)
@@ -578,6 +715,9 @@ async def validate_image(
         
         # Add message and vision analysis to decision
         decision["message"] = message
+        
+        # STEP 7: Add UI feedback for forensics (non-blocking)
+        decision["forensics_ui_feedback"] = _generate_forensics_ui_feedback(forensics_analysis)
         
         # Add extracted issue data for auto-fill (if vision analysis succeeded)
         # Include even for rejected images so user can review and correct
@@ -693,6 +833,19 @@ async def validate_image(
                     "error": vision_analysis.get("error")
                 } if vision_analysis else None,
                 
+                # Image Source Forensics (NEW)
+                "forensics": {
+                    "enabled": forensics_analysis.get("source_type") != "UNKNOWN",
+                    "source_type": forensics_analysis.get("source_type"),
+                    "confidence_score": forensics_analysis.get("confidence_score", 0.0),
+                    "evidence": forensics_analysis.get("evidence", []),
+                    "byte_analysis": forensics_analysis.get("byte_analysis", {}),
+                    "metadata_analysis": forensics_analysis.get("metadata_analysis", {}),
+                    "compression_analysis": forensics_analysis.get("compression_analysis", {}),
+                    "filename_analysis": forensics_analysis.get("filename_analysis", {}),
+                    "forensics_version": forensics_analysis.get("forensics_version", "1.0")
+                } if forensics_analysis else None,
+                
                 # Issue association (if provided)
                 "issue": {
                     "issue_id": issue_id if 'issue_id' in locals() else None,
@@ -701,7 +854,7 @@ async def validate_image(
                 
                 # Metadata
                 "metadata": {
-                    "validation_version": "2.0"  # Updated to 2.0 with vision analysis
+                    "validation_version": "4.0"  # Updated to 4.0 with complete forensics classification
                 }
             }
             
@@ -729,6 +882,33 @@ async def validate_image(
         print(f"Status: {decision['status']}")
         print(f"Confidence: {decision['confidence_score']:.2%}")
         print(f"Reason Codes: {decision['reason_codes']}")
+        
+        # Forensics results
+        if decision.get('forensics_analysis'):
+            forensics = decision['forensics_analysis']
+            version = forensics_analysis.get('forensics_version', '1.0')
+            print(f"\n🔍 Forensics Analysis v{version}:")
+            print(f"   Source: {forensics['source_type']}")
+            print(f"   Confidence: {forensics['confidence_score']:.2%}")
+            print(f"   Evidence: {', '.join(forensics['evidence'][:3])}{'...' if len(forensics['evidence']) > 3 else ''}")
+            
+            # Show classification details if available (v3.0+)
+            if 'classification_result' in forensics_analysis:
+                classification = forensics_analysis['classification_result']
+                print(f"   Classification: {classification['source']} ({classification['confidence']}%)")
+                print(f"   Recommendation: {classification['recommendation']}")
+                
+                # Show breakdown
+                breakdown = classification.get('breakdown', {})
+                if breakdown:
+                    print(f"   Breakdown:")
+                    for source, details in breakdown.items():
+                        if details['confidence'] > 0:
+                            markers = details.get('active_markers', 0)
+                            print(f"     {source}: {details['confidence']}% ({markers} markers)")
+        else:
+            print(f"\n⚠️  Forensics analysis failed or unavailable")
+        
         if decision.get('extracted_issue_data'):
             print("\n✅ Extracted Issue Data:")
             print(f"   Category: {decision['extracted_issue_data']['category']}")
@@ -872,6 +1052,64 @@ async def upload_issue_photos(issue_id: str, photos: List[UploadFile] = File(...
                 "original_issue_id": similar_hashes[0]["issue_id"] if similar_hashes else None
             }
             
+            # Image Source Forensics (AFTER AI detection, BEFORE issue classification)
+            logger.info(f"Running forensics classification for {photo.filename}")
+            try:
+                from utils.imageForensics import ImageSourceForensics
+                
+                # Read image buffer for forensics
+                with open(temp_file_path, 'rb') as f:
+                    image_buffer = f.read()
+                
+                # Run complete forensics classification
+                forensics = ImageSourceForensics()
+                classification_result = forensics.classify_image(image_buffer, str(temp_file_path), photo.filename)
+                
+                # Create forensics analysis for backward compatibility
+                source_mapping = {
+                    'WHATSAPP': 'WHATSAPP_IMAGE',
+                    'SCREENSHOT': 'SCREENSHOT_IMAGE', 
+                    'ORIGINAL_PHOTO': 'ORIGINAL_PHONE_PHOTO',
+                    'UNKNOWN': 'UNKNOWN'
+                }
+                
+                forensics_analysis = {
+                    'source_type': source_mapping.get(classification_result['source'], 'UNKNOWN'),
+                    'confidence_score': classification_result['confidence'] / 100.0,
+                    'evidence': [],
+                    'classification_result': classification_result,
+                    'forensics_version': '3.0'
+                }
+                
+                # Extract evidence from best match
+                if classification_result['source'] != 'UNKNOWN':
+                    breakdown = classification_result['breakdown']
+                    best_source = classification_result['source'].lower()
+                    if best_source in breakdown:
+                        forensics_analysis['evidence'] = breakdown[best_source].get('evidence', [])
+                
+                logger.info(f"Forensics: {classification_result['source']} "
+                           f"({classification_result['confidence']}% confidence)")
+                
+                # SAFETY: Never reject based solely on image source
+                
+            except Exception as e:
+                logger.warning(f"Forensics analysis failed gracefully: {str(e)}")
+                # Graceful fallback - never block submission
+                forensics_analysis = {
+                    'source_type': 'UNKNOWN',
+                    'confidence_score': 0.0,
+                    'evidence': [f'Analysis failed: {str(e)}'],
+                    'classification_result': {
+                        'source': 'UNKNOWN',
+                        'confidence': 0,
+                        'recommendation': 'ACCEPT',
+                        'breakdown': {},
+                        'error': str(e)
+                    },
+                    'forensics_version': '3.0'
+                }
+
             # Vision Analysis - Content Understanding (NEW)
             logger.info(f"Running vision analysis for {photo.filename}")
             vision_analysis = vision_service.analyze_image_content(
@@ -897,7 +1135,8 @@ async def upload_issue_photos(issue_id: str, photos: List[UploadFile] = File(...
                 "exif_data": exif_data,
                 "hash_match": hash_match_data,
                 "issue_match": issue_match,
-                "vision_analysis": vision_analysis  # NEW
+                "vision_analysis": vision_analysis,
+                "forensics_analysis": forensics_analysis  # NEW
             }
             
             decision = decision_engine.make_decision(validation_data)
