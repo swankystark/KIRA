@@ -86,6 +86,40 @@ class ApiService {
     });
   }
 
+  // Complaint Creation (Phase 1 - with officer auto-assignment)
+  async createComplaint(complaintData) {
+    const formData = new FormData();
+    
+    // Add all form fields
+    formData.append('citizen_name', complaintData.citizenName);
+    if (complaintData.citizenPhone) {
+      formData.append('citizen_phone', complaintData.citizenPhone);
+    }
+    formData.append('category', complaintData.category);
+    formData.append('severity', complaintData.severity);
+    formData.append('description', complaintData.description);
+    formData.append('ward', complaintData.ward);
+    formData.append('location', complaintData.location);
+    formData.append('latitude', complaintData.latitude);
+    formData.append('longitude', complaintData.longitude);
+    
+    // Add image file
+    if (complaintData.image) {
+      formData.append('image', complaintData.image);
+    }
+    
+    // Add validation record ID if available
+    if (complaintData.validation_record_id) {
+      formData.append('validation_record_id', complaintData.validation_record_id);
+    }
+
+    return this.request('/complaints/create', {
+      method: 'POST',
+      headers: {}, // Remove Content-Type to let browser set it for FormData
+      body: formData,
+    });
+  }
+
   // AI Analysis (legacy)
   async analyzeDescription(description) {
     return this.request('/analyze', {

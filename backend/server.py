@@ -23,11 +23,13 @@ from models import (
     VerificationCreate, Verification, VerificationStats,
     Stats, TimelineItem, ChatRequest, ChatResponse, ExtractedData,
     AnalyzeRequest, AnalyzeResponse, AnalysisData,
-    ImageValidationResult, EXIFData, HashMatch
+    ImageValidationResult, EXIFData, HashMatch,
+    ComplaintCreate, Complaint, ComplaintResponse, AssignedOfficer,
+    Supervisor, ComplaintTimelineEvent
 )
 
 # Import image validation services (AFTER load_dotenv)
-from services import sightengine_service, exif_service, hash_service, decision_engine, vision_service
+from services import sightengine_service, exif_service, hash_service, decision_engine, vision_service, officer_routing
 
 # Debug: Print environment variables
 print("\n" + "="*60)
@@ -120,6 +122,20 @@ async def lifespan(app: FastAPI):
 
 # Create the main app with lifespan handler
 app = FastAPI(lifespan=lifespan)
+
+# Add CORS middleware to allow frontend requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Mount static files for uploads
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
@@ -933,6 +949,258 @@ async def validate_image(
         logger.error(f"Image validation error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Image validation failed: {str(e)}")
 
+# Complaint Creation Endpoint (Phase 1)
+@api_router.post("/complaints/create", response_model=ComplaintResponse)
+async def create_complaint(
+    citizen_name: str = Form(...),
+    citizen_phone: Optional[str] = Form(None),
+    category: str = Form(...),
+    severity: str = Form(...),
+    description: str = Form(...),
+    ward: int = Form(...),
+    location: str = Form(...),
+    latitude: float = Form(...),
+    longitude: float = Form(...),
+    image: UploadFile = File(...),
+    validation_record_id: Optional[str] = Form(None)
+):
+    """
+    Create a new complaint with automatic officer assignment.
+    
+    Flow:
+    1. Save image to permanent storage
+    2. Assign officer based on ward + department
+    3. Create complaint in MongoDB
+    4. Return complaint ID + officer details
+    """
+    try:
+        logger.info(f"\n{'='*60}")
+        logger.info(f"CREATING COMPLAINT")
+        logger.info(f"{'='*60}")
+        logger.info(f"Citizen: {citizen_name}")
+        logger.info(f"Category: {category}, Severity: {severity}")
+        logger.info(f"Ward: {ward}, Location: {location}")
+        
+        # STEP 1: Save image to permanent storage
+        file_ext = image.filename.split(".")[-1].lower()
+        complaint_id = generate_issue_id()  # Reuse existing function
+        image_filename = f"{complaint_id}_{uuid.uuid4().hex[:8]}.{file_ext}"
+        
+        # Create complaints directory if it doesn't exist
+        complaints_dir = UPLOAD_DIR / "complaints"
+        complaints_dir.mkdir(parents=True, exist_ok=True)
+        
+        image_path = complaints_dir / image_filename
+        
+        # Save image
+        with open(image_path, "wb") as buffer:
+            content = await image.read()
+            buffer.write(content)
+        
+        image_url = f"/uploads/complaints/{image_filename}"
+        logger.info(f"✅ Image saved: {image_url}")
+        
+        # STEP 2: Assign officer based on ward + department
+        officer_id = officer_routing.assign_officer(ward, category)
+        
+        assigned_officer_data = None
+        needs_manual_routing = False
+        status = "pending"
+        
+        if officer_id:
+            # Fetch officer details from MongoDB
+            officer_details = await officer_routing.get_officer_details(db, officer_id)
+            
+            if officer_details:
+                assigned_officer_data = AssignedOfficer(
+                    officer_id=officer_details["officer_id"],
+                    name=officer_details["name"],
+                    title=officer_details["title"],
+                    department=officer_details["department"],
+                    ward=officer_details.get("ward")
+                )
+                status = "assigned"
+                logger.info(f"✅ Officer assigned: {officer_details['name']} ({officer_details['title']})")
+            else:
+                logger.warning(f"⚠️ Officer ID {officer_id} not found in database")
+                needs_manual_routing = True
+        else:
+            logger.warning(f"⚠️ No officer found for Ward {ward}, Category {category}")
+            needs_manual_routing = True
+            status = "unassigned"
+        
+        # STEP 3: Create complaint in MongoDB
+        complaint_doc = {
+            "complaint_id": complaint_id,
+            "citizen": {
+                "name": citizen_name,
+                "phone": citizen_phone
+            },
+            "category": category,
+            "severity": severity,
+            "description": description,
+            "location": {
+                "lat": latitude,
+                "lng": longitude,
+                "address": location,
+                "ward": ward
+            },
+            "image_url": image_url,
+            "assigned_officer": assigned_officer_data.dict() if assigned_officer_data else None,
+            "status": status,
+            "needs_manual_routing": needs_manual_routing,
+            "validation_record_id": validation_record_id,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }
+        
+        result = await db.complaints.insert_one(complaint_doc)
+        logger.info(f"✅ Complaint created: {complaint_id} (MongoDB ID: {result.inserted_id})")
+        
+        # STEP 4: Prepare response
+        response_message = f"Complaint {complaint_id} created successfully"
+        
+        if assigned_officer_data:
+            response_message += f" and assigned to {assigned_officer_data.name}"
+        elif needs_manual_routing:
+            response_message += " - awaiting manual officer assignment"
+        
+        logger.info(f"{'='*60}\n")
+        
+        return ComplaintResponse(
+            complaint_id=complaint_id,
+            assigned_officer={
+                "id": assigned_officer_data.officer_id,
+                "name": assigned_officer_data.name,
+                "title": assigned_officer_data.title,
+                "department": assigned_officer_data.department,
+                "ward": assigned_officer_data.ward
+            } if assigned_officer_data else None,
+            status=status,
+            message=response_message
+        )
+        
+    except Exception as e:
+        logger.error(f"Complaint creation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create complaint: {str(e)}")
+
+# ================================================================
+# PHASE 2: OFFICER DASHBOARD ENDPOINTS
+# ================================================================
+
+@api_router.post("/officer/login")
+async def officer_login(
+    officer_id: str = Form(...),
+    password: str = Form(...)
+):
+    """
+    Simple officer login for demo.
+    Validates officer_id and password, returns officer details.
+    """
+    logger.info(f"Officer login attempt: {officer_id}")
+    
+    # Find officer
+    officer = await db.officers.find_one({"officer_id": officer_id})
+    
+    if not officer:
+        raise HTTPException(status_code=404, detail="Officer not found")
+    
+    # Check password (simple plaintext for demo)
+    stored_password = officer.get("password", "officer123")  # Default password
+    if password != stored_password:
+        raise HTTPException(status_code=401, detail="Invalid password")
+    
+    logger.info(f"✅ Officer logged in: {officer['name']}")
+    
+    return {
+        "success": True,
+        "officer": {
+            "officer_id": officer["officer_id"],
+            "name": officer["name"],
+            "title": officer["title"],
+            "department": officer["department"],
+            "wards": officer.get("wards", []),
+            "email": officer.get("email"),
+            "phone": officer.get("phone")
+        }
+    }
+
+@api_router.get("/officer/complaints")
+async def get_officer_complaints(officer_id: str = Query(...)):
+    """
+    Get all complaints assigned to a specific officer.
+    """
+    logger.info(f"Fetching complaints for officer: {officer_id}")
+    
+    # Find complaints assigned to this officer
+    cursor = db.complaints.find(
+        {"assigned_officer.officer_id": officer_id}
+    ).sort("created_at", -1)
+    
+    complaints = await cursor.to_list(length=100)
+    
+    # Convert ObjectId to string
+    for c in complaints:
+        c["_id"] = str(c["_id"])
+    
+    logger.info(f"Found {len(complaints)} complaints for {officer_id}")
+    
+    return {
+        "officer_id": officer_id,
+        "total": len(complaints),
+        "complaints": complaints
+    }
+
+@api_router.get("/complaints/{complaint_id}")
+async def get_complaint_detail(complaint_id: str):
+    """
+    Get full details of a single complaint.
+    """
+    logger.info(f"Fetching complaint: {complaint_id}")
+    
+    complaint = await db.complaints.find_one({"complaint_id": complaint_id})
+    
+    if not complaint:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+    
+    # Convert ObjectId to string
+    complaint["_id"] = str(complaint["_id"])
+    
+    return complaint
+
+@api_router.put("/complaints/{complaint_id}/status")
+async def update_complaint_status(
+    complaint_id: str,
+    status: str = Form(...),
+    notes: Optional[str] = Form(None)
+):
+    """
+    Update complaint status.
+    """
+    logger.info(f"Updating complaint {complaint_id} status to: {status}")
+    
+    result = await db.complaints.update_one(
+        {"complaint_id": complaint_id},
+        {
+            "$set": {
+                "status": status,
+                "updated_at": datetime.utcnow()
+            },
+            "$push": {
+                "status_history": {
+                    "status": status,
+                    "notes": notes,
+                    "timestamp": datetime.utcnow()
+                }
+            }
+        }
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+    
+    return {"success": True, "message": f"Status updated to {status}"}
+
 # Issue Management
 @api_router.post("/issues", response_model=Issue)
 @api_router.post("/report", response_model=Issue) # Alias for compatibility
@@ -1427,3 +1695,238 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ------------------------------------------------------------------
+# PHASE 4: SUPERVISOR & ESCALATION ENDPOINTS
+# ------------------------------------------------------------------
+
+@app.post("/api/supervisor/login")
+async def supervisor_login(credentials: dict):
+    supervisor_id = credentials.get("supervisor_id")
+    password = credentials.get("password")
+    
+    supervisor = await db.supervisors.find_one({
+        "supervisor_id": supervisor_id,
+        "password": password
+    })
+    
+    if not supervisor:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+    return {
+        "success": True,
+        "supervisor": {
+            "supervisor_id": supervisor["supervisor_id"],
+            "name": supervisor["name"],
+            "department": supervisor["department"],
+            "ward": supervisor.get("ward")
+        }
+    }
+
+@app.get("/api/supervisor/complaints")
+async def get_supervisor_complaints(
+    supervisor_id: str,
+    filter: str = Query("pending", enum=["pending", "overdue", "all"])
+):
+    # Verify supervisor exists
+    supervisor = await db.supervisors.find_one({"supervisor_id": supervisor_id})
+    if not supervisor:
+        raise HTTPException(status_code=404, detail="Supervisor not found")
+    
+    # Base query: Complaints escalated to this supervisor
+    query = {"supervisor_id": supervisor_id}
+    
+    # Get current time for deadline checks
+    now = datetime.utcnow()
+    
+    # Calculate stats first (for dashboard cards)
+    all_assigned = await db.complaints.find({"supervisor_id": supervisor_id}).to_list(length=1000)
+    
+    pending_count = 0
+    overdue_count = 0
+    new_today_count = 0
+    
+    for c in all_assigned:
+        s_status = c.get("supervisor_status")
+        deadline = c.get("supervisor_deadline")
+        
+        # Pending logic: Status is PENDING or None
+        if not s_status or s_status == "PENDING":
+            pending_count += 1
+            
+            # Overdue logic
+            # Handle string vs datetime mismatch if any
+            if isinstance(deadline, str):
+                try:
+                    deadline = datetime.fromisoformat(deadline)
+                except ValueError:
+                    pass
+            
+            if isinstance(deadline, datetime) and now > deadline:
+                overdue_count += 1
+        
+        # New today logic (escalated today)
+        timeline = c.get("timeline", [])
+        for event in timeline:
+            if event.get("action") == "sent_to_supervisor":
+                ts = event.get("timestamp") or event.get("datetime")
+                if isinstance(ts, str):
+                    try:
+                        ts = datetime.fromisoformat(ts)
+                    except ValueError:
+                        continue
+                if isinstance(ts, datetime) and (now - ts).days < 1:
+                    new_today_count += 1
+                    break
+    
+    # Filter for the list
+    if filter == "pending":
+        query["$or"] = [{"supervisor_status": "PENDING"}, {"supervisor_status": None}]
+    elif filter == "overdue":
+        query["$or"] = [{"supervisor_status": "PENDING"}, {"supervisor_status": None}]
+        query["supervisor_deadline"] = {"$lt": now}
+    # "all" includes everything (resolved etc)
+    
+    complaints = await db.complaints.find(query).sort("supervisor_deadline", 1).to_list(length=100)
+    
+    return {
+        "stats": {
+            "new_today": new_today_count,
+            "pending": pending_count,
+            "overdue": overdue_count
+        },
+        "complaints": complaints
+    }
+
+@app.post("/api/complaints/{complaint_id}/escalate")
+async def escalate_complaint(complaint_id: str, data: dict):
+    """
+    Escalate a complaint to a supervisor for review.
+    
+    Flow:
+    1. Find complaint by ID
+    2. Find supervisor based on department (category)
+    3. Update complaint status and assign supervisor
+    4. Add timeline event
+    """
+    try:
+        complaint = await db.complaints.find_one({"complaint_id": complaint_id})
+        if not complaint:
+            raise HTTPException(status_code=404, detail="Complaint not found")
+            
+        # Logic to find supervisor based on department/ward
+        # Using category as department for now
+        department = complaint.get("category", "").lower()
+        
+        # Try to find supervisor for this department
+        supervisor = await db.supervisors.find_one({"department": department})
+        
+        if not supervisor:
+            # Fallback to any available supervisor
+            supervisor = await db.supervisors.find_one({})
+            
+        if not supervisor:
+            # No supervisors in system - return helpful error
+            logger.warning(f"No supervisors found in system for escalation of {complaint_id}")
+            return {
+                "success": False,
+                "error": "No supervisors available",
+                "message": "No supervisors are configured in the system. Please run seed_supervisors.py to add supervisors."
+            }
+        
+        # Calculate deadline
+        is_high_severity = complaint.get("severity", "Low") in ["High", "Critical"]
+        hours = 24 if is_high_severity else 72
+        deadline = datetime.utcnow() + timedelta(hours=hours)
+        
+        # Update timeline
+        new_event = {
+            "timestamp": datetime.utcnow(),
+            "actor": data.get("officer_name", "Officer"),
+            "role": "officer",
+            "action": "sent_to_supervisor",
+            "details": f"Escalated to {supervisor['name']}"
+        }
+        
+        update_data = {
+            "status": "awaiting_supervisor",
+            "supervisor_id": supervisor["supervisor_id"],
+            "supervisor_status": "PENDING",
+            "supervisor_deadline": deadline,
+            "updated_at": datetime.utcnow()
+        }
+        
+        await db.complaints.update_one(
+            {"complaint_id": complaint_id},
+            {
+                "$set": update_data,
+                "$push": {"timeline": new_event}
+            }
+        )
+        
+        return {"success": True, "deadline": deadline.isoformat(), "supervisor": supervisor["name"]}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Escalation failed for {complaint_id}: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"Failed to escalate complaint: {str(e)}"
+        }
+
+@app.post("/api/complaints/{complaint_id}/review")
+async def review_complaint(complaint_id: str, review_data: dict):
+    # action: "APPROVE" | "REJECT"
+    # notes: str
+    action = review_data.get("action")
+    notes = review_data.get("notes", "")
+    supervisor_name = review_data.get("supervisor_name", "Supervisor")
+    
+    if action not in ["APPROVE", "REJECT", "ESCALATE"]:
+        raise HTTPException(status_code=400, detail="Invalid action")
+    
+    update_data = {}
+    new_status = ""
+    
+    if action == "APPROVE":
+        new_status = "resolved"
+        update_data = {
+            "status": "resolved",
+            "supervisor_status": "APPROVED",
+            "updated_at": datetime.utcnow()
+        }
+    elif action == "REJECT":
+        new_status = "in_progress" # Send back to officer
+        update_data = {
+            "status": "in_progress",
+            "supervisor_status": "REJECTED",
+            "updated_at": datetime.utcnow()
+        }
+    elif action == "ESCALATE":
+        new_status = "escalated_hod"
+        update_data = {
+            "status": "escalated_hod",
+            "supervisor_status": "ESCALATED",
+            "updated_at": datetime.utcnow()
+        }
+
+    # Timeline event
+    new_event = {
+        "timestamp": datetime.utcnow(),
+        "actor": supervisor_name,
+        "role": "supervisor",
+        "action": action.lower(),
+        "details": notes
+    }
+    
+    await db.complaints.update_one(
+        {"complaint_id": complaint_id},
+        {
+            "$set": update_data,
+            "$push": {"timeline": new_event}
+        }
+    )
+    
+    return {"success": True, "new_status": new_status}

@@ -10,7 +10,7 @@ const GovernmentBanner = () => {
         {
             id: 1,
             title: "Digital India Initiative",
-            subtitle: "Transforming Delhi through Technology",
+            subtitle: "Transforming City through Technology",
             description: "Report civic issues instantly through our AI-powered grievance portal. Get faster resolutions with real-time tracking.",
             icon: "🇮🇳",
             background: "linear-gradient(135deg, #1F4E78 0%, #153456 100%)",
@@ -21,8 +21,8 @@ const GovernmentBanner = () => {
         {
             id: 2,
             title: "Swachh Bharat Mission",
-            subtitle: "Clean Delhi, Green Delhi",
-            description: "Join our cleanliness drive. Report garbage issues and help maintain Delhi's hygiene standards for a healthier tomorrow.",
+            subtitle: "Clean City, Green City",
+            description: "Join our cleanliness drive. Report garbage issues and help maintain hygiene standards for a healthier tomorrow.",
             icon: "🌱",
             background: "linear-gradient(135deg, #2E7D32 0%, #1B5E20 100%)",
             textColor: "#FFFFFF",
@@ -32,7 +32,7 @@ const GovernmentBanner = () => {
         {
             id: 3,
             title: "Smart City Mission",
-            subtitle: "Building Tomorrow's Delhi Today",
+            subtitle: "Building Tomorrow Today",
             description: "Advanced infrastructure monitoring with IoT sensors. Real-time issue detection and automated municipal responses.",
             icon: "🏙️",
             background: "linear-gradient(135deg, #1565C0 0%, #0D47A1 100%)",

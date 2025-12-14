@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, User, Lock, ChevronDown } from 'lucide-react';
+import { Shield, User, Lock, ChevronDown, ArrowLeft } from 'lucide-react';
 
-const OfficerLogin = () => {
+const OfficerLoginPage = () => {
     const navigate = useNavigate();
     const [formData, setFormData] = useState({
         officerId: '',
@@ -10,34 +10,65 @@ const OfficerLogin = () => {
         role: 'Department Officer'
     });
     const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    const roles = [
+        'Department Officer',
+        'Nodal Officer', 
+        'Zonal Officer'
+    ];
 
     const handleInputChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
+        setError(''); // Clear error when user types
     };
 
     const handleLogin = async (e) => {
         e.preventDefault();
         setIsLoading(true);
+        setError('');
+        
+        console.log('🔐 Login attempt:', formData.officerId);
 
-        // Mock authentication - replace with real API call
-        setTimeout(() => {
-            if (formData.officerId && formData.password) {
-                // Store officer session
-                localStorage.setItem('officerSession', JSON.stringify({
-                    officerId: formData.officerId,
-                    name: `Officer ${formData.officerId}`,
-                    role: formData.role,
-                    designation: formData.role,
-                    loginTime: new Date().toISOString()
-                }));
+        try {
+            // Call real API
+            const formDataObj = new FormData();
+            formDataObj.append('officer_id', formData.officerId);
+            formDataObj.append('password', formData.password);
+            
+            console.log('📡 Calling API: http://127.0.0.1:5000/api/officer/login');
 
-                // Navigate to officer dashboard
-                navigate('/officer/dashboard');
-            } else {
-                alert('Please enter valid credentials');
+            const response = await fetch('http://127.0.0.1:5000/api/officer/login', {
+                method: 'POST',
+                body: formDataObj
+            });
+            
+            console.log('📡 API Response status:', response.status);
+
+            const data = await response.json();
+            console.log('📡 API Response data:', data);
+
+            if (!response.ok) {
+                throw new Error(data.detail || 'Login failed');
             }
+
+            // Store officer session to correct key
+            console.log('💾 Storing to localStorage:', data.officer);
+            localStorage.setItem('officer', JSON.stringify(data.officer));
+            
+            // Verify storage
+            const stored = localStorage.getItem('officer');
+            console.log('💾 Verified storage:', stored);
+            console.log('✅ Officer logged in successfully!');
+            
+            // Navigate to dashboard
+            navigate('/officer/dashboard');
+        } catch (err) {
+            console.error('❌ Login error:', err);
+            setError(err.message || 'Login failed. Please try again.');
+        } finally {
             setIsLoading(false);
-        }, 1000);
+        }
     };
 
     return (
@@ -72,12 +103,22 @@ const OfficerLogin = () => {
                             cursor: 'pointer'
                         }}
                     >
-                        <Building2 className="w-8 h-8" />
+                        <div style={{
+                            width: '50px',
+                            height: '50px',
+                            backgroundColor: '#F77F00',
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}>
+                            🏛️
+                        </div>
                         <div>
                             <h1 style={{ fontSize: '1.25rem', fontWeight: '700', margin: 0 }}>
                                 UNIFIED MUNICIPAL PLATFORM
                             </h1>
-                            <p style={{ fontSize: '0.75rem', margin: 0, opacity: 0.9 }}>
+                            <p style={{ fontSize: '0.875rem', margin: 0, opacity: 0.9 }}>
                                 Officer Portal • Official Officer Portal
                             </p>
                         </div>
@@ -87,23 +128,30 @@ const OfficerLogin = () => {
                     <button
                         onClick={() => navigate('/citizen/login')}
                         style={{
-                            padding: '0.5rem 1rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            padding: '0.75rem 1rem',
                             backgroundColor: 'transparent',
-                            color: 'white',
-                            border: '1px solid rgba(255,255,255,0.3)',
+                            border: '2px solid white',
                             borderRadius: '0.375rem',
+                            color: 'white',
                             fontSize: '0.875rem',
+                            fontWeight: '500',
                             cursor: 'pointer',
                             transition: 'all 0.2s'
                         }}
                         onMouseOver={(e) => {
-                            e.target.style.backgroundColor = 'rgba(255,255,255,0.1)';
+                            e.target.style.backgroundColor = 'white';
+                            e.target.style.color = '#1F4E78';
                         }}
                         onMouseOut={(e) => {
                             e.target.style.backgroundColor = 'transparent';
+                            e.target.style.color = 'white';
                         }}
                     >
-                        ← Back to Citizen Portal
+                        <ArrowLeft className="w-4 h-4" />
+                        Back to Citizen Portal
                     </button>
                 </div>
             </div>
@@ -118,10 +166,10 @@ const OfficerLogin = () => {
             }}>
                 <div style={{
                     width: '100%',
-                    maxWidth: '400px',
+                    maxWidth: '450px',
                     backgroundColor: 'white',
                     borderRadius: '0.5rem',
-                    boxShadow: '0 4px 12px rgba(31, 78, 120, 0.15)',
+                    boxShadow: '0 8px 24px rgba(31, 78, 120, 0.15)',
                     border: '1px solid #E3EEF7',
                     overflow: 'hidden'
                 }}>
@@ -129,12 +177,12 @@ const OfficerLogin = () => {
                     <div style={{
                         backgroundColor: '#1F4E78',
                         color: 'white',
-                        padding: '1.5rem',
+                        padding: '2rem',
                         textAlign: 'center'
                     }}>
                         <div style={{
-                            width: '60px',
-                            height: '60px',
+                            width: '80px',
+                            height: '80px',
                             backgroundColor: '#F77F00',
                             borderRadius: '50%',
                             display: 'flex',
@@ -142,19 +190,33 @@ const OfficerLogin = () => {
                             justifyContent: 'center',
                             margin: '0 auto 1rem auto'
                         }}>
-                            <User className="w-8 h-8 text-white" />
+                            <Shield className="w-10 h-10 text-white" />
                         </div>
-                        <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: 0 }}>
-                            OFFICER LOGIN
+                        <h2 style={{ fontSize: '1.5rem', fontWeight: '700', margin: '0 0 0.5rem 0' }}>
+                            Officer Login
                         </h2>
-                        <p style={{ fontSize: '0.875rem', opacity: 0.9, margin: '0.5rem 0 0 0' }}>
-                            Municipal Corporation Portal
+                        <p style={{ fontSize: '0.875rem', opacity: 0.9, margin: 0 }}>
+                            Municipal Corporation Portal Access
                         </p>
                     </div>
 
                     {/* Form */}
                     <form onSubmit={handleLogin} style={{ padding: '2rem' }}>
-                        {/* Officer ID */}
+                        {error && (
+                            <div style={{
+                                backgroundColor: '#FEF2F2',
+                                border: '1px solid #FECACA',
+                                borderRadius: '0.375rem',
+                                padding: '0.75rem',
+                                marginBottom: '1.5rem',
+                                color: '#DC2626',
+                                fontSize: '0.875rem'
+                            }}>
+                                {error}
+                            </div>
+                        )}
+
+                        {/* Officer ID / Email */}
                         <div style={{ marginBottom: '1.5rem' }}>
                             <label style={{
                                 display: 'block',
@@ -168,12 +230,17 @@ const OfficerLogin = () => {
                                 Officer ID / Email
                             </label>
                             <div style={{ position: 'relative' }}>
-                                <User className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                                <User className="w-5 h-5 text-gray-400" style={{
+                                    position: 'absolute',
+                                    left: '0.75rem',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)'
+                                }} />
                                 <input
                                     type="text"
                                     value={formData.officerId}
                                     onChange={(e) => handleInputChange('officerId', e.target.value)}
-                                    placeholder="Enter your Officer ID"
+                                    placeholder="Enter your Officer ID or Email"
                                     required
                                     style={{
                                         width: '100%',
@@ -206,7 +273,12 @@ const OfficerLogin = () => {
                                 Password
                             </label>
                             <div style={{ position: 'relative' }}>
-                                <Lock className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                                <Lock className="w-5 h-5 text-gray-400" style={{
+                                    position: 'absolute',
+                                    left: '0.75rem',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)'
+                                }} />
                                 <input
                                     type="password"
                                     value={formData.password}
@@ -260,11 +332,17 @@ const OfficerLogin = () => {
                                         cursor: 'pointer'
                                     }}
                                 >
-                                    <option value="Department Officer">Department Officer</option>
-                                    <option value="Nodal Officer">Nodal Officer</option>
-                                    <option value="Zonal Officer">Zonal Officer</option>
+                                    {roles.map(role => (
+                                        <option key={role} value={role}>{role}</option>
+                                    ))}
                                 </select>
-                                <ChevronDown className="w-5 h-5 absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                <ChevronDown className="w-5 h-5 text-gray-400" style={{
+                                    position: 'absolute',
+                                    right: '0.75rem',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    pointerEvents: 'none'
+                                }} />
                             </div>
                         </div>
 
@@ -274,12 +352,12 @@ const OfficerLogin = () => {
                             disabled={isLoading}
                             style={{
                                 width: '100%',
-                                padding: '0.875rem',
-                                background: isLoading ? '#9CA3AF' : 'linear-gradient(135deg, #1F4E78 0%, #153456 100%)',
+                                padding: '1rem',
+                                backgroundColor: isLoading ? '#9CA3AF' : '#1F4E78',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: '0.375rem',
-                                fontSize: '0.875rem',
+                                fontSize: '1rem',
                                 fontWeight: '600',
                                 cursor: isLoading ? 'not-allowed' : 'pointer',
                                 textTransform: 'uppercase',
@@ -287,8 +365,18 @@ const OfficerLogin = () => {
                                 transition: 'all 0.2s',
                                 marginBottom: '1rem'
                             }}
+                            onMouseOver={(e) => {
+                                if (!isLoading) {
+                                    e.target.style.backgroundColor = '#153456';
+                                }
+                            }}
+                            onMouseOut={(e) => {
+                                if (!isLoading) {
+                                    e.target.style.backgroundColor = '#1F4E78';
+                                }
+                            }}
                         >
-                            {isLoading ? 'LOGGING IN...' : 'LOGIN'}
+                            {isLoading ? 'Logging in...' : 'Login'}
                         </button>
 
                         {/* Forgot Password Link */}
@@ -315,4 +403,4 @@ const OfficerLogin = () => {
     );
 };
 
-export default OfficerLogin;
+export default OfficerLoginPage;

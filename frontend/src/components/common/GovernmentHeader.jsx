@@ -80,7 +80,7 @@ const GovernmentHeader = ({ user, onLogout, onToggleTheme, theme }) => {
                                 margin: 0,
                                 lineHeight: '1.2'
                             }}>
-                                MUNICIPAL CORPORATION
+                                UNIFIED MUNICIPAL PLATFORM
                             </h1>
                             <h2 style={{
                                 fontSize: '1.25rem',
@@ -89,7 +89,7 @@ const GovernmentHeader = ({ user, onLogout, onToggleTheme, theme }) => {
                                 margin: 0,
                                 lineHeight: '1.2'
                             }}>
-                                OF DELHI
+
                             </h2>
                             <p style={{
                                 fontSize: '0.75rem',
@@ -97,7 +97,7 @@ const GovernmentHeader = ({ user, onLogout, onToggleTheme, theme }) => {
                                 margin: '0.25rem 0 0 0',
                                 fontWeight: '500'
                             }}>
-                                दिल्ली नगर निगम • Citizen Grievance Portal
+                                Official Portal • Citizen Grievance Portal
                             </p>
                         </div>
                     </div>
@@ -482,7 +482,7 @@ const GovernmentHeader = ({ user, onLogout, onToggleTheme, theme }) => {
                                         </h3>
                                         
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                            {/* Zone 1 - North Delhi */}
+                                            {/* Zone 1 - North Zone */}
                                             <div style={{
                                                 padding: '1rem',
                                                 backgroundColor: '#F5F7FA',
@@ -491,7 +491,7 @@ const GovernmentHeader = ({ user, onLogout, onToggleTheme, theme }) => {
                                                 borderRadius: '0.375rem'
                                             }}>
                                                 <h4 style={{ fontSize: '0.8125rem', fontWeight: '600', color: '#1F4E78', marginBottom: '0.75rem' }}>
-                                                    📍 Zone 1 - North Delhi
+                                                    📍 Zone 1 - North Zone
                                                 </h4>
                                                 <div style={{ fontSize: '0.6875rem', color: '#6B7280', lineHeight: '1.4' }}>
                                                     <p style={{ margin: '0 0 0.25rem 0' }}><strong>Head Officer:</strong> Sh. Amit Kumar</p>
@@ -516,7 +516,7 @@ const GovernmentHeader = ({ user, onLogout, onToggleTheme, theme }) => {
                                                 </div>
                                             </div>
 
-                                            {/* Zone 2 - East Delhi */}
+                                            {/* Zone 2 - East Zone */}
                                             <div style={{
                                                 padding: '1rem',
                                                 backgroundColor: '#F5F7FA',
@@ -525,7 +525,7 @@ const GovernmentHeader = ({ user, onLogout, onToggleTheme, theme }) => {
                                                 borderRadius: '0.375rem'
                                             }}>
                                                 <h4 style={{ fontSize: '0.8125rem', fontWeight: '600', color: '#F77F00', marginBottom: '0.75rem' }}>
-                                                    📍 Zone 2 - East Delhi
+                                                    📍 Zone 2 - East Zone
                                                 </h4>
                                                 <div style={{ fontSize: '0.6875rem', color: '#6B7280', lineHeight: '1.4' }}>
                                                     <p style={{ margin: '0 0 0.25rem 0' }}><strong>Head Officer:</strong> Smt. Priya Sharma</p>
@@ -550,7 +550,7 @@ const GovernmentHeader = ({ user, onLogout, onToggleTheme, theme }) => {
                                                 </div>
                                             </div>
 
-                                            {/* Zone 3 - South Delhi */}
+                                            {/* Zone 3 - South Zone */}
                                             <div style={{
                                                 padding: '1rem',
                                                 backgroundColor: '#F5F7FA',
@@ -559,7 +559,7 @@ const GovernmentHeader = ({ user, onLogout, onToggleTheme, theme }) => {
                                                 borderRadius: '0.375rem'
                                             }}>
                                                 <h4 style={{ fontSize: '0.8125rem', fontWeight: '600', color: '#2E7D32', marginBottom: '0.75rem' }}>
-                                                    📍 Zone 3 - South Delhi
+                                                    📍 Zone 3 - South Zone
                                                 </h4>
                                                 <div style={{ fontSize: '0.6875rem', color: '#6B7280', lineHeight: '1.4' }}>
                                                     <p style={{ margin: '0 0 0.25rem 0' }}><strong>Head Officer:</strong> Sh. Rajesh Gupta</p>
@@ -584,7 +584,7 @@ const GovernmentHeader = ({ user, onLogout, onToggleTheme, theme }) => {
                                                 </div>
                                             </div>
 
-                                            {/* Zone 4 - West Delhi */}
+                                            {/* Zone 4 - West Zone */}
                                             <div style={{
                                                 padding: '1rem',
                                                 backgroundColor: '#F5F7FA',
@@ -593,7 +593,7 @@ const GovernmentHeader = ({ user, onLogout, onToggleTheme, theme }) => {
                                                 borderRadius: '0.375rem'
                                             }}>
                                                 <h4 style={{ fontSize: '0.8125rem', fontWeight: '600', color: '#7C3AED', marginBottom: '0.75rem' }}>
-                                                    📍 Zone 4 - West Delhi
+                                                    📍 Zone 4 - West Zone
                                                 </h4>
                                                 <div style={{ fontSize: '0.6875rem', color: '#6B7280', lineHeight: '1.4' }}>
                                                     <p style={{ margin: '0 0 0.25rem 0' }}><strong>Head Officer:</strong> Sh. Vikram Singh</p>
@@ -675,7 +675,7 @@ const GovernmentHeader = ({ user, onLogout, onToggleTheme, theme }) => {
                                                 border: '1px solid #E3EEF7'
                                             }}>
                                                 <div style={{ fontSize: '0.875rem', color: '#1B3A4B', fontWeight: '700', marginBottom: '0.5rem' }}>
-                                                    🗺️ Interactive Delhi Map
+                                                    🗺️ Interactive City Map
                                                 </div>
                                                 <div style={{ fontSize: '0.75rem', color: '#6B7280', fontWeight: '500', marginBottom: '0.5rem' }}>
                                                     "Find your ward by clicking on map"
@@ -794,7 +794,7 @@ const GovernmentHeader = ({ user, onLogout, onToggleTheme, theme }) => {
                                                     borderRadius: '0.375rem'
                                                 }}>
                                                     <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#1F4E78', marginBottom: '0.25rem' }}>
-                                                        Zone 1 - North Delhi
+                                                        Zone 1 - North Zone
                                                     </div>
                                                     <div style={{ fontSize: '0.6875rem', color: '#6B7280', lineHeight: '1.4' }}>
                                                         Water supply maintenance scheduled for Dec 16-17.

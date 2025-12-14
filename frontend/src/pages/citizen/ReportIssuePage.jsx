@@ -11,6 +11,7 @@ import PinDropMap from '../../components/ReportIssue/PinDropMap';
 import ManualForm from '../../components/ReportIssue/ManualForm';
 import ImageValidationStep from '../../components/ReportIssue/ImageValidationStep';
 import ExtractedIssueForm from '../../components/ReportIssue/ExtractedIssueForm';
+import SuccessModal from '../../components/ReportIssue/SuccessModal';
 
 const ReportIssuePage = () => {
     const navigate = useNavigate();
@@ -77,7 +78,7 @@ const ReportIssuePage = () => {
                     lng: result.full_exif.gps_coordinates.longitude,
                     address: result.full_exif.gps_address || 
                              `${result.full_exif.gps_coordinates.latitude.toFixed(4)}°N, ${result.full_exif.gps_coordinates.longitude.toFixed(4)}°E`
-                } : location || { lat: 28.6139, lng: 77.2090 }), // Default to Delhi coordinates
+                } : location || { lat: 28.6139, lng: 77.2090 }), // Default coordinates
                 vision_analysis: result.vision_analysis,
                 forensics_analysis: result.forensics_analysis,
                 validation_status: result.status
@@ -136,33 +137,54 @@ const ReportIssuePage = () => {
     const handleSubmitFromExtracted = async (formData) => {
         setIsProcessing(true);
         try {
-            const payload = {
-                citizen_name: formData.citizenName,
-                citizen_phone: formData.citizenPhone || null,
+            console.log('📤 Submitting complaint with officer auto-assignment...');
+            console.log('Form data:', formData);
+            console.log('Captured photo:', capturedPhoto);
+            
+            // Convert base64 data URL to File object
+            let imageFile = null;
+            if (capturedPhoto) {
+                // Handle base64 data URL
+                if (typeof capturedPhoto === 'string' && capturedPhoto.startsWith('data:')) {
+                    const response = await fetch(capturedPhoto);
+                    const blob = await response.blob();
+                    imageFile = new File([blob], 'complaint_image.jpg', { type: 'image/jpeg' });
+                    console.log('📷 Converted base64 to File:', imageFile);
+                } else if (capturedPhoto instanceof File) {
+                    imageFile = capturedPhoto;
+                } else if (capturedPhoto?.file) {
+                    imageFile = capturedPhoto.file;
+                }
+            }
+            
+            // Prepare complaint data for new API
+            const complaintData = {
+                citizenName: formData.citizenName,
+                citizenPhone: formData.citizenPhone || null,
                 category: formData.category,
-                category_name: getCategoryName(formData.category),
                 severity: formData.severity,
                 description: formData.description,
+                ward: formData.ward || 12, // Use ward from form or default to 12
                 location: aiAnalysis.location?.address || `${aiAnalysis.location?.lat}, ${aiAnalysis.location?.lng}`,
-                coordinates: {
-                    lat: aiAnalysis.location?.lat || location?.lat || 12.9234,
-                    lng: aiAnalysis.location?.lng || location?.lng || 77.5678
-                },
-                location_text: aiAnalysis.location?.address
+                latitude: aiAnalysis.location?.lat || location?.lat || 12.9234,
+                longitude: aiAnalysis.location?.lng || location?.lng || 77.5678,
+                image: imageFile, // Pass the converted File object
+                validation_record_id: validationResult?.validation_id || null
             };
 
-            console.log('Submitting extracted form data:', payload);
+            console.log('📤 Complaint data prepared:', complaintData);
+            console.log('📤 Image file:', imageFile);
             
-            // Use the existing API
-            const result = await apiService.createIssue(payload);
-            setSubmittedComplaint({
-                complaintId: result.id,
-                expectedResolution: '3-5 business days',
-                rewards: { points: 50, badges: ['Reporter'] }
-            });
+            // Call new complaint creation API with officer auto-assignment
+            const result = await apiService.createComplaint(complaintData);
+            
+            console.log('✅ Complaint created successfully:', result);
+            
+            // Set complaint data for SuccessModal
+            setSubmittedComplaint(result);
             setCurrentStep('success');
         } catch (error) {
-            console.error('Submission failed:', error);
+            console.error('❌ Complaint submission failed:', error);
             alert('Failed to submit complaint. Please try again.');
         } finally {
             setIsProcessing(false);
@@ -339,77 +361,10 @@ const ReportIssuePage = () => {
         );
     }
 
-    // Success Step
+    // Success Step - Show SuccessModal with complaint ID and assigned officer
     if (currentStep === 'success' && submittedComplaint) {
-        return (
-            <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F3F4F6', padding: '2rem' }}>
-                <div style={{ width: '100%', maxWidth: '450px', backgroundColor: 'white', borderRadius: '0.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', padding: '2rem', textAlign: 'center' }}>
-                    <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🎉</div>
-                    <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#111827', marginBottom: '0.5rem' }}>Complaint Submitted!</h2>
-                    
-                    <div style={{ backgroundColor: '#ECFDF5', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1.5rem' }}>
-                        <p style={{ fontSize: '0.875rem', color: '#065F46', margin: 0 }}>
-                            <strong>Complaint ID:</strong> {submittedComplaint.complaintId}
-                        </p>
-                        <p style={{ fontSize: '0.875rem', color: '#065F46', margin: '0.25rem 0 0 0' }}>
-                            <strong>Expected Fix:</strong> {submittedComplaint.expectedResolution}
-                        </p>
-                    </div>
-
-                    {submittedComplaint.rewards && (
-                        <div style={{ backgroundColor: '#FEF3C7', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1.5rem' }}>
-                            <h3 style={{ fontSize: '1rem', fontWeight: 'bold', color: '#92400E', margin: '0 0 0.5rem 0' }}>🏆 Your Rewards</h3>
-                            <p style={{ fontSize: '0.875rem', color: '#92400E', margin: 0 }}>
-                                +{submittedComplaint.rewards.points} points
-                            </p>
-                            {submittedComplaint.rewards.badges && (
-                                <p style={{ fontSize: '0.875rem', color: '#92400E', margin: '0.25rem 0 0 0' }}>
-                                    Badges: {submittedComplaint.rewards.badges.join(', ')}
-                                </p>
-                            )}
-                        </div>
-                    )}
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                        <button
-                            onClick={() => navigate('/dashboard')}
-                            style={{
-                                width: '100%',
-                                padding: '0.875rem',
-                                backgroundColor: '#10B981',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '0.375rem',
-                                fontWeight: '600',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            📱 Track Live: Open Dashboard
-                        </button>
-                        <button
-                            onClick={() => {
-                                setCapturedPhoto(null);
-                                setAiAnalysis(null);
-                                setSubmittedComplaint(null);
-                                setCurrentStep('camera');
-                            }}
-                            style={{
-                                width: '100%',
-                                padding: '0.875rem',
-                                backgroundColor: 'white',
-                                color: '#10B981',
-                                border: '1px solid #10B981',
-                                borderRadius: '0.375rem',
-                                fontWeight: '600',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            🚀 Report Another Issue
-                        </button>
-                    </div>
-                </div>
-            </div>
-        );
+        console.log('🎉 Rendering SuccessModal with complaint data:', submittedComplaint);
+        return <SuccessModal complaintData={submittedComplaint} />;
     }
 
     // Debug fallback

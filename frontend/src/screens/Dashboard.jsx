@@ -1363,7 +1363,7 @@ const Dashboard = () => {
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.05em'
                             }}>
-                                MUNICIPAL CORPORATION
+                                UNIFIED MUNICIPAL PLATFORM
                             </h4>
                             <p style={{
                                 fontSize: '0.75rem',
@@ -1371,7 +1371,7 @@ const Dashboard = () => {
                                 margin: '0 0 1rem 0',
                                 lineHeight: '1.4'
                             }}>
-                                Serving Delhi with Excellence
+                                Serving Citizens with Excellence
                             </p>
                             <div style={{
                                 fontSize: '0.75rem',
@@ -1404,7 +1404,7 @@ const Dashboard = () => {
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.05em'
                             }}>
-                                © 2025 Municipal Corporation. All Rights Reserved
+                                © 2025 Unified Municipal Platform. All Rights Reserved
                             </p>
                         </div>
                         

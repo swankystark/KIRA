@@ -1,298 +1,850 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { LogOut, TrendingUp, Clock, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { mockCategories, mockSocialPosts } from '../../data/mock';
-import MapComponent from '../../components/MapComponent';
-import IssueCard from '../../components/IssueCard';
-import apiService from '../../services/api';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/ui/select';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { 
+    Building2, LogOut, Home, FileText, BarChart3, Settings,
+    Clock, AlertTriangle, CheckCircle, TrendingUp,
+    Filter, Search, Eye, MapPin, Calendar
+} from 'lucide-react';
 
 const OfficerDashboard = () => {
-  const navigate = useNavigate();
-  const [user, setUser] = useState(JSON.parse(localStorage.getItem('currentUser')));
-  const [issues, setIssues] = useState([]);
-  const [stats, setStats] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterCategory, setFilterCategory] = useState('all');
-  const [filterVerification, setFilterVerification] = useState('all');
+    const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [officerData, setOfficerData] = useState(null);
+    const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'inbox');
+    const [filterType, setFilterType] = useState(searchParams.get('filter') || 'all');
+    const [complaints, setComplaints] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
 
-  // Verify login and load data
-  useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem('currentUser'));
-    if (!storedUser) {
-      navigate('/officer/login');
-    } else {
-      setUser(storedUser);
-      loadData();
-    }
-  }, [navigate]);
+    useEffect(() => {
+        // Check officer session - use 'officer' key
+        const session = localStorage.getItem('officer');
+        console.log('📦 localStorage officer:', session);
+        
+        if (!session) {
+            console.log('❌ No officer session found, redirecting to login');
+            navigate('/officer/login');
+            return;
+        }
+        
+        try {
+            const officer = JSON.parse(session);
+            console.log('✅ Officer parsed:', officer);
+            setOfficerData(officer);
+            
+            // Fetch complaints from API
+            fetchComplaints(officer.officer_id);
+        } catch (e) {
+            console.error('❌ Failed to parse officer session:', e);
+            navigate('/officer/login');
+        }
+    }, [navigate]);
 
-  // Load issues and stats from API
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const [issuesResponse, statsResponse] = await Promise.all([
-        apiService.getIssues({ 
-          status: filterStatus, 
-          category: filterCategory, 
-          verification: filterVerification 
-        }),
-        apiService.getStats()
-      ]);
-      
-      setIssues(issuesResponse || []);
-      setStats(statsResponse || {});
-    } catch (error) {
-      console.error('Failed to load dashboard data:', error);
-      // Fallback to empty data
-      setIssues([]);
-      setStats({});
-    } finally {
-      setLoading(false);
-    }
-  };
+    const fetchComplaints = async (officerId) => {
+        try {
+            setIsLoading(true);
+            const response = await fetch(`http://127.0.0.1:5000/api/officer/complaints?officer_id=${officerId}`);
+            const data = await response.json();
+            
+            if (data.complaints) {
+                // Transform complaints to match UI format
+                const transformed = data.complaints.map(c => ({
+                    id: c.complaint_id,
+                    category: c.category?.charAt(0).toUpperCase() + c.category?.slice(1) || 'Unknown',
+                    location: c.location?.address || `${c.location?.lat}, ${c.location?.lng}`,
+                    ward: `Ward ${c.location?.ward || 'N/A'}`,
+                    age: getAge(c.created_at),
+                    status: mapStatus(c.status),
+                    priority: c.severity || 'Medium',
+                    reportedAt: c.created_at,
+                    slaBreached: isSlaBreeched(c.created_at, c.status),
+                    citizen: c.citizen,
+                    description: c.description,
+                    imageUrl: c.image_url
+                }));
+                setComplaints(transformed);
+                console.log('✅ Loaded complaints:', transformed);
+            }
+        } catch (error) {
+            console.error('❌ Failed to fetch complaints:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
-  // Reload data when filters change
-  useEffect(() => {
-    if (user) {
-      loadData();
-    }
-  }, [filterStatus, filterCategory, filterVerification]);
+    const getAge = (createdAt) => {
+        if (!createdAt) return '0d';
+        const created = new Date(createdAt);
+        const now = new Date();
+        const diffDays = Math.floor((now - created) / (1000 * 60 * 60 * 24));
+        return `${diffDays}d`;
+    };
 
-  // Filter issues by department (API already handles other filters)
-  const filteredIssues = issues.filter(issue => {
-    // Filter by Department if user has one
-    if (user && user.department && issue.department !== user.department) {
-      return false;
-    }
-    return true;
-  });
+    const mapStatus = (status) => {
+        const statusMap = {
+            'assigned': 'New',
+            'pending': 'Pending',
+            'in_progress': 'In Progress',
+            'resolved': 'Resolved',
+            'unassigned': 'New'
+        };
+        return statusMap[status] || status?.charAt(0).toUpperCase() + status?.slice(1) || 'New';
+    };
 
-  if (!user) return null;
+    const isSlaBreeched = (createdAt, status) => {
+        if (!createdAt || status === 'resolved') return false;
+        const created = new Date(createdAt);
+        const now = new Date();
+        const diffDays = Math.floor((now - created) / (1000 * 60 * 60 * 24));
+        return diffDays > 5; // SLA is 5 days
+    };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
+    useEffect(() => {
+        // Update URL when tab or filter changes
+        const params = new URLSearchParams();
+        if (activeTab !== 'inbox') params.set('tab', activeTab);
+        if (filterType !== 'all') params.set('filter', filterType);
+        setSearchParams(params);
+    }, [activeTab, filterType, setSearchParams]);
 
-  // Prepare map markers
-  const mapMarkers = filteredIssues.map(issue => ({
-    lat: issue.coordinates.lat,
-    lng: issue.coordinates.lng,
-    title: issue.id,
-    description: issue.categoryName
-  }));
+    const handleLogout = () => {
+        localStorage.removeItem('officer');
+        navigate('/officer/login');
+    };
 
-  const statCards = [
-    { 
-      title: 'New Today', 
-      value: stats.new_today || 0, 
-      icon: <TrendingUp className="w-6 h-6" />,
-      color: 'var(--primary)'
-    },
-    { 
-      title: 'In Verification', 
-      value: stats.verifying || 0, 
-      icon: <Clock className="w-6 h-6" />,
-      color: 'var(--warning)'
-    },
-    { 
-      title: 'In Progress', 
-      value: stats.in_progress || 0, 
-      icon: <AlertTriangle className="w-6 h-6" />,
-      color: 'var(--accent)'
-    },
-    { 
-      title: 'Resolved This Week', 
-      value: stats.resolved_this_week || 0, 
-      icon: <CheckCircle2 className="w-6 h-6" />,
-      color: 'var(--success)'
-    },
-  ];
+    const handleKPICardClick = (filter) => {
+        setActiveTab('inbox');
+        setFilterType(filter);
+    };
 
-  const handleLogout = () => {
-    localStorage.removeItem('currentUser');
-    navigate('/officer/login');
-  };
+    const handleComplaintClick = (complaintId) => {
+        navigate(`/officer/complaints/${complaintId}`);
+    };
 
-  return (
-    <div style={{ backgroundColor: 'var(--bg-surface)', minHeight: '100vh' }}>
-      {/* Header */}
-      <header 
-        className="py-4 px-6 shadow-sm"
-        style={{ backgroundColor: 'var(--bg-white)' }}
-      >
-        <div className="container flex justify-between items-center">
-          <div>
-            <h1 className="text-xl font-bold" style={{ color: 'var(--primary)' }}>
-              {user.department}
-            </h1>
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              Welcome, Officer {user.name}
-            </p>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="btn-secondary flex items-center gap-2"
-          >
-            <LogOut className="w-4 h-4" />
-            Logout
-          </button>
-        </div>
-      </header>
+    const getFilteredComplaints = () => {
+        let filtered = complaints;
 
-      {/* Main Content */}
-      <div className="container py-8">
-        {/* Stats Cards */}
-        <div className="grid md:grid-cols-4 gap-6 mb-8">
-          {statCards.map((stat, idx) => (
-            <div key={idx} className="card">
-              <div className="flex items-center justify-between mb-2">
-                <div style={{ color: stat.color }}>
-                  {stat.icon}
+        // Filter by tab
+        switch (activeTab) {
+            case 'inbox':
+                filtered = complaints.filter(c => ['New', 'Pending'].includes(c.status));
+                break;
+            case 'in-progress':
+                filtered = complaints.filter(c => c.status === 'In Progress');
+                break;
+            case 'completed':
+                filtered = complaints.filter(c => c.status === 'Resolved');
+                break;
+            default:
+                break;
+        }
+
+        // Apply additional filters
+        switch (filterType) {
+            case 'today':
+                const today = new Date().toDateString();
+                filtered = filtered.filter(c => new Date(c.reportedAt).toDateString() === today);
+                break;
+            case 'pending':
+                filtered = filtered.filter(c => c.status === 'Pending');
+                break;
+            case 'sla-breached':
+                filtered = filtered.filter(c => c.slaBreached);
+                break;
+            default:
+                break;
+        }
+
+        return filtered;
+    };
+
+    const getKPIData = () => {
+        const today = new Date().toDateString();
+        const newToday = complaints.filter(c => 
+            new Date(c.reportedAt).toDateString() === today && c.status === 'New'
+        ).length;
+        
+        const totalPending = complaints.filter(c => 
+            ['New', 'Pending'].includes(c.status)
+        ).length;
+        
+        const slaBreached = complaints.filter(c => c.slaBreached).length;
+        
+        const pendingAges = complaints
+            .filter(c => ['New', 'Pending'].includes(c.status))
+            .map(c => parseInt(c.age));
+        const avgAge = pendingAges.length > 0 
+            ? Math.round(pendingAges.reduce((a, b) => a + b, 0) / pendingAges.length)
+            : 0;
+
+        return { newToday, totalPending, avgAge, slaBreached };
+    };
+
+    const kpiData = getKPIData();
+    const filteredComplaints = getFilteredComplaints();
+
+    // Debug logging
+    console.log('🎯 Dashboard state:', { officerData, complaints, isLoading });
+
+    if (!officerData) {
+        return (
+            <div style={{ 
+                minHeight: '100vh', 
+                display: 'flex', 
+                flexDirection: 'column',
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                backgroundColor: '#F5F7FA' 
+            }}>
+                <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🔄</div>
+                <div>Loading officer data...</div>
+                <div style={{ fontSize: '0.75rem', color: '#6B7280', marginTop: '0.5rem' }}>
+                    If stuck, check console for errors
                 </div>
-                <span className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>
-                  {stat.value}
-                </span>
-              </div>
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {stat.title}
-              </p>
             </div>
-          ))}
-        </div>
+        );
+    }
 
-        {/* Hotspot Map */}
-        <div className="card mb-8">
-          <h3 className="mb-4" style={{ color: 'var(--text-primary)' }}>Issue Hotspot Map</h3>
-          <div className="h-96">
-            <MapComponent 
-              position={{ lat: 12.9716, lng: 77.5946 }} 
-              zoom={12}
-              markers={mapMarkers}
-              height="100%"
-            />
-          </div>
-          <p className="text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>
-            Click on markers to see issue details. Red clusters indicate high-severity verified issues.
-          </p>
-        </div>
-
-        {/* Filters */}
-        <div className="card mb-6">
-          <h3 className="mb-4" style={{ color: 'var(--text-primary)' }}>Filter Issues</h3>
-          <div className="grid md:grid-cols-3 gap-4">
-            <div>
-              <label className="block mb-2 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                Status
-              </label>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="reported">Reported</SelectItem>
-                  <SelectItem value="verifying">Verifying</SelectItem>
-                  <SelectItem value="assigned">Assigned</SelectItem>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
-                  <SelectItem value="resolved">Resolved</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="block mb-2 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                Category
-              </label>
-              <Select value={filterCategory} onValueChange={setFilterCategory}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {mockCategories.map(cat => (
-                    <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="block mb-2 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                Verification
-              </label>
-              <Select value={filterVerification} onValueChange={setFilterVerification}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="verified">Verified</SelectItem>
-                  <SelectItem value="unverified">Needs Verification</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-
-        {/* Social Media Candidates (Link to v2 Feature 6) */}
-        <div className="mb-8">
-           <h3 className="mb-4 flex items-center gap-2 font-bold text-lg" style={{ color: 'var(--text-primary)' }}>
-              <span className="bg-blue-100 text-blue-700 p-1 rounded">New</span> 
-              Social Media Signals
-           </h3>
-           <div className="grid md:grid-cols-2 gap-6">
-              {mockSocialPosts.map(post => (
-                 <div key={post.id} className="card border-l-4 border-blue-500">
-                    <div className="flex justify-between items-start mb-2">
-                       <span className="text-xs font-bold uppercase text-gray-400">{post.platform} • {post.timestamp}</span>
-                       <span className="badge badge-warning text-xs">{(post.confidence * 100)}% Confidence</span>
+    return (
+        <div style={{ minHeight: '100vh', backgroundColor: '#F5F7FA' }}>
+            {/* Government Header */}
+            <div style={{
+                backgroundColor: '#1F4E78',
+                color: 'white',
+                padding: '1rem 0',
+                borderBottom: '3px solid #F77F00'
+            }}>
+                <div style={{ 
+                    maxWidth: '1200px', 
+                    margin: '0 auto',
+                    padding: '0 1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                }}>
+                    {/* Logo */}
+                    <div 
+                        onClick={() => navigate('/')}
+                        style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '1rem',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        <Building2 className="w-8 h-8" />
+                        <div>
+                            <h1 style={{ fontSize: '1.25rem', fontWeight: '700', margin: 0 }}>
+                                UNIFIED MUNICIPAL PLATFORM
+                            </h1>
+                            <p style={{ fontSize: '0.75rem', margin: 0, opacity: 0.9 }}>
+                                Officer Portal • Official Officer Portal
+                            </p>
+                        </div>
                     </div>
-                    <p className="font-medium text-gray-800 mb-2">"{post.content}"</p>
-                    <div className="flex gap-4 text-sm text-gray-500 mb-3">
-                       <span>📍 {post.predictedLocation}</span>
-                       <span>🏷️ {post.predictedCategory}</span>
-                    </div>
-                    <div className="flex gap-2">
-                       <button className="btn-primary text-xs py-1 px-3">Verify & Add</button>
-                       <button className="btn-secondary text-xs py-1 px-3">Ignore</button>
-                    </div>
-                 </div>
-              ))}
-           </div>
-        </div>
 
-        {/* Issues List */}
-        <div className="mb-4">
-          <h2 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
-            {filteredIssues.length} Issue{filteredIssues.length !== 1 ? 's' : ''}
-          </h2>
-        </div>
+                    {/* Officer Info & Logout */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '0.875rem', fontWeight: '600' }}>
+                                Welcome, {officerData.name}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>
+                                {officerData.title || officerData.department}
+                            </div>
+                        </div>
+                        <button
+                            onClick={handleLogout}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                padding: '0.5rem 1rem',
+                                backgroundColor: '#F77F00',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '0.375rem',
+                                fontSize: '0.875rem',
+                                fontWeight: '500',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            <LogOut className="w-4 h-4" />
+                            Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
-          {filteredIssues.map(issue => (
-            <IssueCard 
-              key={issue.id} 
-              issue={issue}
-              onClick={() => navigate(`/officer/issue/${issue.id}`)}
-            />
-          ))}
+            {/* Breadcrumb */}
+            <div style={{
+                backgroundColor: 'white',
+                borderBottom: '1px solid #E3EEF7',
+                padding: '0.75rem 0'
+            }}>
+                <div style={{ 
+                    maxWidth: '1200px', 
+                    margin: '0 auto',
+                    padding: '0 1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    fontSize: '0.875rem',
+                    color: '#6B7280'
+                }}>
+                    <Home 
+                        className="w-4 h-4 cursor-pointer hover:text-blue-600" 
+                        onClick={() => navigate('/')}
+                    />
+                    <span>{'>'}</span>
+                    <span 
+                        style={{ color: '#1F4E78', cursor: 'pointer' }}
+                        onClick={() => navigate('/officer/dashboard')}
+                    >
+                        Officer Dashboard
+                    </span>
+                </div>
+            </div>
+
+            {/* Navigation Bar */}
+            <div style={{
+                backgroundColor: 'white',
+                borderBottom: '1px solid #E3EEF7',
+                padding: '1rem 0'
+            }}>
+                <div style={{ 
+                    maxWidth: '1200px', 
+                    margin: '0 auto',
+                    padding: '0 1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1rem'
+                }}>
+                    <button
+                        onClick={() => navigate('/officer/dashboard')}
+                        style={{
+                            padding: '0.75rem 1.5rem',
+                            backgroundColor: '#1F4E78',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '0.375rem',
+                            fontSize: '0.875rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem'
+                        }}
+                    >
+                        <BarChart3 className="w-4 h-4" />
+                        Dashboard
+                    </button>
+                    
+                    <button
+                        onClick={() => navigate('/officer/tasks')}
+                        style={{
+                            padding: '0.75rem 1.5rem',
+                            backgroundColor: 'white',
+                            color: '#1F4E78',
+                            border: '2px solid #1F4E78',
+                            borderRadius: '0.375rem',
+                            fontSize: '0.875rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            transition: 'all 0.2s'
+                        }}
+                        onMouseOver={(e) => {
+                            e.target.style.backgroundColor = '#1F4E78';
+                            e.target.style.color = 'white';
+                        }}
+                        onMouseOut={(e) => {
+                            e.target.style.backgroundColor = 'white';
+                            e.target.style.color = '#1F4E78';
+                        }}
+                    >
+                        <Clock className="w-4 h-4" />
+                        Workers & SLA
+                    </button>
+                </div>
+            </div>
+
+            {/* Main Content */}
+            <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem 1rem' }}>
+                {/* KPI Cards Row */}
+                <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
+                    gap: '1rem',
+                    marginBottom: '2rem'
+                }}>
+                    {/* New Complaints Today */}
+                    <div 
+                        onClick={() => handleKPICardClick('today')}
+                        style={{
+                            backgroundColor: 'white',
+                            padding: '1.5rem',
+                            borderRadius: '0.5rem',
+                            boxShadow: '0 2px 8px rgba(31, 78, 120, 0.1)',
+                            border: '1px solid #E3EEF7',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            borderLeft: '4px solid #3B82F6'
+                        }}
+                        onMouseOver={(e) => {
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(31, 78, 120, 0.15)';
+                        }}
+                        onMouseOut={(e) => {
+                            e.currentTarget.style.transform = 'translateY(0)';
+                            e.currentTarget.style.boxShadow = '0 2px 8px rgba(31, 78, 120, 0.1)';
+                        }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <div style={{
+                                backgroundColor: '#EBF8FF',
+                                padding: '0.75rem',
+                                borderRadius: '0.5rem'
+                            }}>
+                                <FileText className="w-6 h-6 text-blue-600" />
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '2rem', fontWeight: '700', color: '#1F4E78' }}>
+                                    {kpiData.newToday}
+                                </div>
+                                <div style={{ fontSize: '0.875rem', color: '#6B7280' }}>
+                                    New Complaints Today
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Total Pending */}
+                    <div 
+                        onClick={() => handleKPICardClick('pending')}
+                        style={{
+                            backgroundColor: 'white',
+                            padding: '1.5rem',
+                            borderRadius: '0.5rem',
+                            boxShadow: '0 2px 8px rgba(31, 78, 120, 0.1)',
+                            border: '1px solid #E3EEF7',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            borderLeft: '4px solid #F59E0B'
+                        }}
+                        onMouseOver={(e) => {
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(31, 78, 120, 0.15)';
+                        }}
+                        onMouseOut={(e) => {
+                            e.currentTarget.style.transform = 'translateY(0)';
+                            e.currentTarget.style.boxShadow = '0 2px 8px rgba(31, 78, 120, 0.1)';
+                        }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <div style={{
+                                backgroundColor: '#FFFBEB',
+                                padding: '0.75rem',
+                                borderRadius: '0.5rem'
+                            }}>
+                                <Clock className="w-6 h-6 text-amber-600" />
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '2rem', fontWeight: '700', color: '#1F4E78' }}>
+                                    {kpiData.totalPending}
+                                </div>
+                                <div style={{ fontSize: '0.875rem', color: '#6B7280' }}>
+                                    Total Pending
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Avg Age of Pending */}
+                    <div 
+                        onClick={() => alert('Analytics feature coming soon')}
+                        style={{
+                            backgroundColor: 'white',
+                            padding: '1.5rem',
+                            borderRadius: '0.5rem',
+                            boxShadow: '0 2px 8px rgba(31, 78, 120, 0.1)',
+                            border: '1px solid #E3EEF7',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            borderLeft: '4px solid #10B981'
+                        }}
+                        onMouseOver={(e) => {
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(31, 78, 120, 0.15)';
+                        }}
+                        onMouseOut={(e) => {
+                            e.currentTarget.style.transform = 'translateY(0)';
+                            e.currentTarget.style.boxShadow = '0 2px 8px rgba(31, 78, 120, 0.1)';
+                        }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <div style={{
+                                backgroundColor: '#ECFDF5',
+                                padding: '0.75rem',
+                                borderRadius: '0.5rem'
+                            }}>
+                                <TrendingUp className="w-6 h-6 text-emerald-600" />
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '2rem', fontWeight: '700', color: '#1F4E78' }}>
+                                    {kpiData.avgAge}
+                                </div>
+                                <div style={{ fontSize: '0.875rem', color: '#6B7280' }}>
+                                    Avg Age of Pending (days)
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* SLA Breached */}
+                    <div 
+                        onClick={() => handleKPICardClick('sla-breached')}
+                        style={{
+                            backgroundColor: 'white',
+                            padding: '1.5rem',
+                            borderRadius: '0.5rem',
+                            boxShadow: '0 2px 8px rgba(31, 78, 120, 0.1)',
+                            border: '1px solid #E3EEF7',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            borderLeft: '4px solid #EF4444'
+                        }}
+                        onMouseOver={(e) => {
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(31, 78, 120, 0.15)';
+                        }}
+                        onMouseOut={(e) => {
+                            e.currentTarget.style.transform = 'translateY(0)';
+                            e.currentTarget.style.boxShadow = '0 2px 8px rgba(31, 78, 120, 0.1)';
+                        }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <div style={{
+                                backgroundColor: '#FEF2F2',
+                                padding: '0.75rem',
+                                borderRadius: '0.5rem'
+                            }}>
+                                <AlertTriangle className="w-6 h-6 text-red-600" />
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '2rem', fontWeight: '700', color: '#1F4E78' }}>
+                                    {kpiData.slaBreached}
+                                </div>
+                                <div style={{ fontSize: '0.875rem', color: '#6B7280' }}>
+                                    SLA Breached
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Tabs Section */}
+                <div style={{
+                    backgroundColor: 'white',
+                    borderRadius: '0.5rem',
+                    boxShadow: '0 2px 8px rgba(31, 78, 120, 0.1)',
+                    border: '1px solid #E3EEF7',
+                    overflow: 'hidden'
+                }}>
+                    {/* Tab Headers */}
+                    <div style={{
+                        display: 'flex',
+                        borderBottom: '1px solid #E3EEF7',
+                        backgroundColor: '#F8FAFC'
+                    }}>
+                        {[
+                            { key: 'inbox', label: 'Inbox – New & Pending', count: complaints.filter(c => ['New', 'Pending'].includes(c.status)).length },
+                            { key: 'in-progress', label: 'In Progress', count: complaints.filter(c => c.status === 'In Progress').length },
+                            { key: 'completed', label: 'Completed', count: complaints.filter(c => c.status === 'Resolved').length }
+                        ].map(tab => (
+                            <button
+                                key={tab.key}
+                                onClick={() => {
+                                    setActiveTab(tab.key);
+                                    setFilterType('all');
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: '1rem 1.5rem',
+                                    backgroundColor: activeTab === tab.key ? '#1F4E78' : 'transparent',
+                                    color: activeTab === tab.key ? 'white' : '#6B7280',
+                                    border: 'none',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.5rem'
+                                }}
+                            >
+                                {tab.label}
+                                <span style={{
+                                    backgroundColor: activeTab === tab.key ? 'rgba(255,255,255,0.2)' : '#E5E7EB',
+                                    color: activeTab === tab.key ? 'white' : '#6B7280',
+                                    padding: '0.25rem 0.5rem',
+                                    borderRadius: '9999px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '600'
+                                }}>
+                                    {tab.count}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Complaints Table */}
+                    <div style={{ padding: '1.5rem' }}>
+                        {filteredComplaints.length === 0 ? (
+                            <div style={{
+                                textAlign: 'center',
+                                padding: '3rem',
+                                color: '#6B7280'
+                            }}>
+                                <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                                <p>No complaints found for the selected filter.</p>
+                            </div>
+                        ) : (
+                            <div style={{ overflowX: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr style={{ borderBottom: '2px solid #E3EEF7' }}>
+                                            <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: '600', color: '#1B3A4B' }}>
+                                                Complaint ID
+                                            </th>
+                                            <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: '600', color: '#1B3A4B' }}>
+                                                Category
+                                            </th>
+                                            <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: '600', color: '#1B3A4B' }}>
+                                                Location / Ward
+                                            </th>
+                                            <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: '600', color: '#1B3A4B' }}>
+                                                Age
+                                            </th>
+                                            <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: '600', color: '#1B3A4B' }}>
+                                                Status
+                                            </th>
+                                            <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: '600', color: '#1B3A4B' }}>
+                                                Action
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredComplaints.map(complaint => (
+                                            <tr 
+                                                key={complaint.id}
+                                                style={{ 
+                                                    borderBottom: '1px solid #F3F4F6',
+                                                    transition: 'background-color 0.2s'
+                                                }}
+                                                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#F8FAFC'}
+                                                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                            >
+                                                <td style={{ padding: '0.75rem' }}>
+                                                    <button
+                                                        onClick={() => handleComplaintClick(complaint.id)}
+                                                        style={{
+                                                            background: 'none',
+                                                            border: 'none',
+                                                            color: '#1F4E78',
+                                                            fontSize: '0.875rem',
+                                                            fontWeight: '600',
+                                                            cursor: 'pointer',
+                                                            textDecoration: 'underline'
+                                                        }}
+                                                    >
+                                                        {complaint.id}
+                                                    </button>
+                                                    {complaint.slaBreached && (
+                                                        <span style={{
+                                                            marginLeft: '0.5rem',
+                                                            backgroundColor: '#FEF2F2',
+                                                            color: '#DC2626',
+                                                            padding: '0.125rem 0.375rem',
+                                                            borderRadius: '0.25rem',
+                                                            fontSize: '0.75rem',
+                                                            fontWeight: '500'
+                                                        }}>
+                                                            SLA
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td style={{ padding: '0.75rem' }}>
+                                                    <button
+                                                        onClick={() => {
+                                                            // Filter by category
+                                                            setFilterType('all');
+                                                            // Could add category filter here
+                                                        }}
+                                                        style={{
+                                                            background: 'none',
+                                                            border: 'none',
+                                                            color: '#6B7280',
+                                                            fontSize: '0.875rem',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        {complaint.category}
+                                                    </button>
+                                                </td>
+                                                <td style={{ padding: '0.75rem', fontSize: '0.875rem', color: '#6B7280' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                                        <MapPin className="w-4 h-4" />
+                                                        {complaint.location}
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '0.75rem', fontSize: '0.875rem', color: '#6B7280' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                                        <Calendar className="w-4 h-4" />
+                                                        {complaint.age}
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '0.75rem' }}>
+                                                    <span style={{
+                                                        backgroundColor: 
+                                                            complaint.status === 'New' ? '#EBF8FF' :
+                                                            complaint.status === 'Pending' ? '#FFFBEB' :
+                                                            complaint.status === 'In Progress' ? '#F0F9FF' :
+                                                            '#ECFDF5',
+                                                        color: 
+                                                            complaint.status === 'New' ? '#1E40AF' :
+                                                            complaint.status === 'Pending' ? '#D97706' :
+                                                            complaint.status === 'In Progress' ? '#0369A1' :
+                                                            '#059669',
+                                                        padding: '0.25rem 0.75rem',
+                                                        borderRadius: '9999px',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: '600'
+                                                    }}>
+                                                        {complaint.status}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '0.75rem' }}>
+                                                    <button
+                                                        onClick={() => handleComplaintClick(complaint.id)}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '0.5rem',
+                                                            padding: '0.5rem 0.75rem',
+                                                            backgroundColor: '#1F4E78',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            borderRadius: '0.375rem',
+                                                            fontSize: '0.75rem',
+                                                            fontWeight: '500',
+                                                            cursor: 'pointer',
+                                                            transition: 'all 0.2s'
+                                                        }}
+                                                    >
+                                                        <Eye className="w-4 h-4" />
+                                                        View
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Sidebar Navigation (Optional for Phase 1) */}
+            <div style={{
+                position: 'fixed',
+                top: '50%',
+                right: '1rem',
+                transform: 'translateY(-50%)',
+                backgroundColor: 'white',
+                borderRadius: '0.5rem',
+                boxShadow: '0 4px 12px rgba(31, 78, 120, 0.15)',
+                border: '1px solid #E3EEF7',
+                padding: '0.5rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem'
+            }}>
+                <button
+                    onClick={() => navigate('/officer/dashboard')}
+                    style={{
+                        padding: '0.75rem',
+                        backgroundColor: '#1F4E78',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '0.375rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}
+                    title="Dashboard"
+                >
+                    <BarChart3 className="w-5 h-5" />
+                </button>
+                <button
+                    onClick={() => navigate('/officer/complaints')}
+                    style={{
+                        padding: '0.75rem',
+                        backgroundColor: '#F3F4F6',
+                        color: '#6B7280',
+                        border: 'none',
+                        borderRadius: '0.375rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}
+                    title="All Complaints"
+                >
+                    <FileText className="w-5 h-5" />
+                </button>
+                <button
+                    onClick={() => navigate('/officer/reports')}
+                    style={{
+                        padding: '0.75rem',
+                        backgroundColor: '#F3F4F6',
+                        color: '#6B7280',
+                        border: 'none',
+                        borderRadius: '0.375rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}
+                    title="Reports & Analytics"
+                >
+                    <BarChart3 className="w-5 h-5" />
+                </button>
+                <button
+                    onClick={() => navigate('/officer/settings')}
+                    style={{
+                        padding: '0.75rem',
+                        backgroundColor: '#F3F4F6',
+                        color: '#6B7280',
+                        border: 'none',
+                        borderRadius: '0.375rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}
+                    title="Settings"
+                >
+                    <Settings className="w-5 h-5" />
+                </button>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default OfficerDashboard;

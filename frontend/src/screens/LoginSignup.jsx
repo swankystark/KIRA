@@ -86,6 +86,32 @@ const LoginSignup = () => {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <LanguageSelector />
+                    {/* Officer Login Button */}
+                    <button
+                        onClick={() => navigate('/officer/login')}
+                        style={{
+                            padding: '0.5rem 1rem',
+                            backgroundColor: '#1F4E78',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '0.375rem',
+                            fontSize: '0.875rem',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem'
+                        }}
+                        onMouseOver={(e) => {
+                            e.target.style.backgroundColor = '#153456';
+                        }}
+                        onMouseOut={(e) => {
+                            e.target.style.backgroundColor = '#1F4E78';
+                        }}
+                    >
+                        🏛️ Officer Login
+                    </button>
                     {/* Theme Toggle - Placeholder */}
                     {/* <button>🌙</button> */}
                 </div>

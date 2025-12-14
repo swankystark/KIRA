@@ -1,0 +1,36 @@
+{
+  "ward_1": {
+    "electricity": "officer_elec_w1",
+    "roads": "officer_roads_w1",
+    "drainage": "officer_drain_w1",
+    "garbage": "officer_waste_w1",
+    "water": "officer_water_w1",
+    "general": "officer_gen_w1"
+  },
+  "ward_2": {
+    "electricity": "officer_elec_w2",
+    "roads": "officer_roads_w2",
+    "drainage": "officer_drain_w2",
+    "garbage": "officer_waste_w2",
+    "water": "officer_water_w2",
+    "general": "officer_gen_w2"
+  },
+  "ward_12": {
+    "electricity": "officer_raj_elec_12",
+    "roads": "officer_priya_civil_12",
+    "drainage": "officer_amit_drain_12",
+    "garbage": "officer_anita_waste_12",
+    "water": "officer_sanjay_water_12",
+    "general": "officer_general_12"
+  },
+  "default_city": {
+    "electricity": "dept_head_elec",
+    "roads": "dept_head_civil",
+    "drainage": "dept_head_drain",
+    "garbage": "dept_head_waste",
+    "water": "dept_head_water",
+    "general": "city_admin",
+    "infrastructure": "dept_head_civil",
+    "others": "city_admin"
+  }
+}

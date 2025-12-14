@@ -196,3 +196,71 @@ class ImageValidationResult(BaseModel):
     confidence_score: float
     message: Optional[str] = None
 
+class Supervisor(BaseModel):
+    supervisor_id: str
+    name: str
+    department: str  # Supervises a specific department
+    ward: Optional[int] = None  # Supervises a specific ward (or None for all wards)
+    password: str
+
+# Complaint Models (Phase 1)
+class AssignedOfficer(BaseModel):
+    officer_id: str
+    name: str
+    title: str
+    department: str
+    ward: Optional[int] = None
+    assigned_at: datetime = Field(default_factory=datetime.utcnow)
+
+class ComplaintTimelineEvent(BaseModel):
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    actor: str  # Name or ID of who performed action
+    role: str   # 'citizen', 'system', 'officer', 'supervisor'
+    action: str # 'created', 'assigned', 'sent_to_supervisor', 'approved', 'rejected'
+    details: Optional[str] = None
+
+class ComplaintCreate(BaseModel):
+    citizen_name: str
+    citizen_phone: Optional[str] = None
+    category: str
+    severity: str
+    description: str
+    ward: int  # Citizen-selected ward
+    location: str  # Formatted address
+    coordinates: Coordinates
+    image_filename: Optional[str] = None
+    validation_record_id: Optional[str] = None  # Link to validation record
+
+class Complaint(BaseModel):
+    complaint_id: str  # e.g., "GG-00045"
+    citizen: dict  # {name, phone}
+    category: str
+    severity: str
+    description: str
+    location: dict  # {lat, lng, address, ward}
+    image_url: Optional[str] = None
+    assigned_officer: Optional[AssignedOfficer] = None
+    status: str = "pending"  # pending | assigned | in_progress | resolved | unassigned | awaiting_supervisor | closed
+    needs_manual_routing: bool = False  # True if no officer could be auto-assigned
+    validation_record_id: Optional[str] = None
+    
+    # Escalation / Timeline Fields (Phase 4)
+    supervisor_id: Optional[str] = None # ID of supervisor assigned for review
+    supervisor_status: Optional[str] = None # PENDING | APPROVED | REJECTED
+    supervisor_deadline: Optional[datetime] = None # Deadline for supervisor review
+    timeline: List[ComplaintTimelineEvent] = [] # Complete history of actions
+    
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+class ComplaintResponse(BaseModel):
+    complaint_id: str
+    assigned_officer: Optional[dict] = None  # {id, name, title, department, ward}
+    status: str
+    message: str
+

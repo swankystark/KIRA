@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { CheckCircle, Edit3, MapPin, AlertTriangle, Eye, Brain, Shield, Camera, MessageSquare, Monitor, Navigation, Target } from 'lucide-react';
+import { WARDS, suggestWard } from '../../data/wards';
 
 const ExtractedIssueForm = ({ extractedData, visionAnalysis, forensicsAnalysis, onSubmit, onEdit, onRetake }) => {
     console.log('🎯 ExtractedIssueForm COMPONENT RENDERING!');
@@ -15,6 +16,7 @@ const ExtractedIssueForm = ({ extractedData, visionAnalysis, forensicsAnalysis, 
         description: extractedData?.description || '',
         citizenName: '',
         citizenPhone: '',
+        ward: suggestWard(extractedData?.location?.address) || 12, // Auto-suggest or default to 12
         location: extractedData?.location || '',
         // NEW REQUIRED FIELDS
         confirmedLatitude: '',
@@ -391,7 +393,7 @@ const ExtractedIssueForm = ({ extractedData, visionAnalysis, forensicsAnalysis, 
                             margin: 0,
                             color: 'white'
                         }}>
-                            Municipal Corporation of Delhi
+                            Unified Municipal Platform
                         </h1>
                         <p style={{ 
                             fontSize: '0.875rem', 

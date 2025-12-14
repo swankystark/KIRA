@@ -1,44 +1,134 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, User, Lock, ChevronDown } from 'lucide-react';
+import { Building2, Mail, ArrowLeft } from 'lucide-react';
 
-const OfficerLogin = () => {
+const ForgotPassword = () => {
     const navigate = useNavigate();
-    const [formData, setFormData] = useState({
-        officerId: '',
-        password: '',
-        role: 'Department Officer'
-    });
+    const [email, setEmail] = useState('');
+    const [isSubmitted, setIsSubmitted] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
-    const handleInputChange = (field, value) => {
-        setFormData(prev => ({ ...prev, [field]: value }));
-    };
-
-    const handleLogin = async (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         setIsLoading(true);
 
-        // Mock authentication - replace with real API call
+        // Mock password reset - replace with real API call
         setTimeout(() => {
-            if (formData.officerId && formData.password) {
-                // Store officer session
-                localStorage.setItem('officerSession', JSON.stringify({
-                    officerId: formData.officerId,
-                    name: `Officer ${formData.officerId}`,
-                    role: formData.role,
-                    designation: formData.role,
-                    loginTime: new Date().toISOString()
-                }));
-
-                // Navigate to officer dashboard
-                navigate('/officer/dashboard');
-            } else {
-                alert('Please enter valid credentials');
-            }
+            setIsSubmitted(true);
             setIsLoading(false);
-        }, 1000);
+        }, 1500);
     };
+
+    if (isSubmitted) {
+        return (
+            <div style={{ 
+                minHeight: '100vh', 
+                backgroundColor: '#F5F7FA',
+                display: 'flex',
+                flexDirection: 'column'
+            }}>
+                {/* Government Header */}
+                <div style={{
+                    backgroundColor: '#1F4E78',
+                    color: 'white',
+                    padding: '1rem 0',
+                    borderBottom: '3px solid #F77F00'
+                }}>
+                    <div style={{ 
+                        maxWidth: '1200px', 
+                        margin: '0 auto',
+                        padding: '0 1rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                    }}>
+                        <div 
+                            onClick={() => navigate('/')}
+                            style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '1rem',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <Building2 className="w-8 h-8" />
+                            <div>
+                                <h1 style={{ fontSize: '1.25rem', fontWeight: '700', margin: 0 }}>
+                                    UNIFIED MUNICIPAL PLATFORM
+                                </h1>
+                                <p style={{ fontSize: '0.75rem', margin: 0, opacity: 0.9 }}>
+                                    Officer Portal • Password Reset
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Success Message */}
+                <div style={{ 
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '2rem'
+                }}>
+                    <div style={{
+                        width: '100%',
+                        maxWidth: '400px',
+                        backgroundColor: 'white',
+                        borderRadius: '0.5rem',
+                        boxShadow: '0 4px 12px rgba(31, 78, 120, 0.15)',
+                        border: '1px solid #E3EEF7',
+                        padding: '2rem',
+                        textAlign: 'center'
+                    }}>
+                        <div style={{
+                            width: '60px',
+                            height: '60px',
+                            backgroundColor: '#ECFDF5',
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            margin: '0 auto 1rem auto'
+                        }}>
+                            <Mail className="w-8 h-8 text-emerald-600" />
+                        </div>
+                        <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: '0 0 1rem 0', color: '#1B3A4B' }}>
+                            Reset Link Sent
+                        </h2>
+                        <p style={{ fontSize: '0.875rem', color: '#6B7280', marginBottom: '1.5rem', lineHeight: '1.5' }}>
+                            We've sent a password reset link to <strong>{email}</strong>. 
+                            Please check your email and follow the instructions to reset your password.
+                        </p>
+                        <button
+                            onClick={() => navigate('/officer/login')}
+                            style={{
+                                width: '100%',
+                                padding: '0.875rem',
+                                backgroundColor: '#1F4E78',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '0.375rem',
+                                fontSize: '0.875rem',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.025em',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem'
+                            }}
+                        >
+                            <ArrowLeft className="w-4 h-4" />
+                            Back to Login
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div style={{ 
@@ -62,7 +152,6 @@ const OfficerLogin = () => {
                     alignItems: 'center',
                     justifyContent: 'space-between'
                 }}>
-                    {/* Logo - Click to home */}
                     <div 
                         onClick={() => navigate('/')}
                         style={{ 
@@ -78,15 +167,17 @@ const OfficerLogin = () => {
                                 UNIFIED MUNICIPAL PLATFORM
                             </h1>
                             <p style={{ fontSize: '0.75rem', margin: 0, opacity: 0.9 }}>
-                                Officer Portal • Official Officer Portal
+                                Officer Portal • Password Reset
                             </p>
                         </div>
                     </div>
 
-                    {/* Back to Citizen Portal */}
                     <button
-                        onClick={() => navigate('/citizen/login')}
+                        onClick={() => navigate('/officer/login')}
                         style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
                             padding: '0.5rem 1rem',
                             backgroundColor: 'transparent',
                             color: 'white',
@@ -96,14 +187,9 @@ const OfficerLogin = () => {
                             cursor: 'pointer',
                             transition: 'all 0.2s'
                         }}
-                        onMouseOver={(e) => {
-                            e.target.style.backgroundColor = 'rgba(255,255,255,0.1)';
-                        }}
-                        onMouseOut={(e) => {
-                            e.target.style.backgroundColor = 'transparent';
-                        }}
                     >
-                        ← Back to Citizen Portal
+                        <ArrowLeft className="w-4 h-4" />
+                        Back to Login
                     </button>
                 </div>
             </div>
@@ -142,19 +228,18 @@ const OfficerLogin = () => {
                             justifyContent: 'center',
                             margin: '0 auto 1rem auto'
                         }}>
-                            <User className="w-8 h-8 text-white" />
+                            <Mail className="w-8 h-8 text-white" />
                         </div>
                         <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: 0 }}>
-                            OFFICER LOGIN
+                            FORGOT PASSWORD
                         </h2>
                         <p style={{ fontSize: '0.875rem', opacity: 0.9, margin: '0.5rem 0 0 0' }}>
-                            Municipal Corporation Portal
+                            Enter your email to reset password
                         </p>
                     </div>
 
                     {/* Form */}
-                    <form onSubmit={handleLogin} style={{ padding: '2rem' }}>
-                        {/* Officer ID */}
+                    <form onSubmit={handleSubmit} style={{ padding: '2rem' }}>
                         <div style={{ marginBottom: '1.5rem' }}>
                             <label style={{
                                 display: 'block',
@@ -165,15 +250,15 @@ const OfficerLogin = () => {
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.025em'
                             }}>
-                                Officer ID / Email
+                                Officer Email Address
                             </label>
                             <div style={{ position: 'relative' }}>
-                                <User className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                                <Mail className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                                 <input
-                                    type="text"
-                                    value={formData.officerId}
-                                    onChange={(e) => handleInputChange('officerId', e.target.value)}
-                                    placeholder="Enter your Officer ID"
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    placeholder="Enter your registered email"
                                     required
                                     style={{
                                         width: '100%',
@@ -192,83 +277,6 @@ const OfficerLogin = () => {
                             </div>
                         </div>
 
-                        {/* Password */}
-                        <div style={{ marginBottom: '1.5rem' }}>
-                            <label style={{
-                                display: 'block',
-                                fontSize: '0.875rem',
-                                fontWeight: '600',
-                                color: '#1B3A4B',
-                                marginBottom: '0.5rem',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.025em'
-                            }}>
-                                Password
-                            </label>
-                            <div style={{ position: 'relative' }}>
-                                <Lock className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                                <input
-                                    type="password"
-                                    value={formData.password}
-                                    onChange={(e) => handleInputChange('password', e.target.value)}
-                                    placeholder="Enter your password"
-                                    required
-                                    style={{
-                                        width: '100%',
-                                        padding: '0.75rem 0.75rem 0.75rem 2.5rem',
-                                        border: '2px solid #E3EEF7',
-                                        borderRadius: '0.375rem',
-                                        fontSize: '0.875rem',
-                                        backgroundColor: 'white',
-                                        color: '#1B3A4B',
-                                        outline: 'none',
-                                        transition: 'border-color 0.2s'
-                                    }}
-                                    onFocus={(e) => e.target.style.borderColor = '#1F4E78'}
-                                    onBlur={(e) => e.target.style.borderColor = '#E3EEF7'}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Role Dropdown */}
-                        <div style={{ marginBottom: '2rem' }}>
-                            <label style={{
-                                display: 'block',
-                                fontSize: '0.875rem',
-                                fontWeight: '600',
-                                color: '#1B3A4B',
-                                marginBottom: '0.5rem',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.025em'
-                            }}>
-                                Role (Optional)
-                            </label>
-                            <div style={{ position: 'relative' }}>
-                                <select
-                                    value={formData.role}
-                                    onChange={(e) => handleInputChange('role', e.target.value)}
-                                    style={{
-                                        width: '100%',
-                                        padding: '0.75rem',
-                                        border: '2px solid #E3EEF7',
-                                        borderRadius: '0.375rem',
-                                        fontSize: '0.875rem',
-                                        backgroundColor: 'white',
-                                        color: '#1B3A4B',
-                                        outline: 'none',
-                                        appearance: 'none',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    <option value="Department Officer">Department Officer</option>
-                                    <option value="Nodal Officer">Nodal Officer</option>
-                                    <option value="Zonal Officer">Zonal Officer</option>
-                                </select>
-                                <ChevronDown className="w-5 h-5 absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
-                            </div>
-                        </div>
-
-                        {/* Login Button */}
                         <button
                             type="submit"
                             disabled={isLoading}
@@ -288,24 +296,24 @@ const OfficerLogin = () => {
                                 marginBottom: '1rem'
                             }}
                         >
-                            {isLoading ? 'LOGGING IN...' : 'LOGIN'}
+                            {isLoading ? 'SENDING RESET LINK...' : 'SEND RESET LINK'}
                         </button>
 
-                        {/* Forgot Password Link */}
-                        <div style={{ textAlign: 'center' }}>
+                        <div style={{ textAlign: 'center', fontSize: '0.875rem', color: '#6B7280' }}>
+                            Remember your password?{' '}
                             <button
                                 type="button"
-                                onClick={() => navigate('/officer/forgot-password')}
+                                onClick={() => navigate('/officer/login')}
                                 style={{
                                     background: 'none',
                                     border: 'none',
                                     color: '#1F4E78',
-                                    fontSize: '0.875rem',
                                     cursor: 'pointer',
-                                    textDecoration: 'underline'
+                                    textDecoration: 'underline',
+                                    fontSize: '0.875rem'
                                 }}
                             >
-                                Forgot password?
+                                Back to Login
                             </button>
                         </div>
                     </form>
@@ -315,4 +323,4 @@ const OfficerLogin = () => {
     );
 };
 
-export default OfficerLogin;
+export default ForgotPassword;
