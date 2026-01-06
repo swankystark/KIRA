@@ -1,6 +1,6 @@
 // API service for GrievanceGenie frontend
 
-const API_BASE_URL = 'http://127.0.0.1:5000'; // Python FastAPI server
+const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://127.0.0.1:5000'; // Python FastAPI server
 
 // Debug logging
 console.log('Environment variables:', {
